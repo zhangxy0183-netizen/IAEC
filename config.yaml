@@ -1,0 +1,38 @@
+dataset:
+  av_path: "/home/b532root/data/b532zxy/AVEC15/kfold"
+  kfold_label_path: "/home/b532root/data/b532zxy/AVEC15/kfold_label.csv"
+
+  train_data_path: "/home/b532root/data/b532zxy/AVEC15/train"
+  train_label_path: "/home/b532root/data/b532zxy/AVEC15/train/train_label.csv"
+
+  dev_data_path: "/home/b532root/data/b532zxy/AVEC15/dev"
+  dev_label_path: "/home/b532root/data/b532zxy/AVEC15/dev/dev_label.csv"
+
+  test_data_path: "/home/b532root/data/b532zxy/AVEC15/test"
+  test_label_path: "/home/b532root/data/b532zxy/AVEC15/test/test_label.csv"
+
+w_all_model:
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/w_all_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/w_all_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/w_all_best_cam.pth"
+
+wo_sim_model:
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_sim_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_sim_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_sim_best_cam.pth"
+
+wo_se_model:
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_se_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_se_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_se_best_cam.pth"
+
+wo_id_model:
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_id_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_id_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_id_best_cam.pth"
+
+pretrain:
+  train_csv_path: "/home/b532root/data/b532zxy/AVEC15/pretrain/train.csv"
+  val_csv_path: "/home/b532root/data/b532zxy/AVEC15/pretrain/dev.csv"
+  test_csv_path: "/home/b532root/data/b532zxy/AVEC15/pretrain/test.csv"
+  file_identity_path: "/home/b532root/data/b532zxy/AVEC15/file_identity.csv"
