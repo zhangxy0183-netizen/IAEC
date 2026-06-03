@@ -1,72 +1,68 @@
 import argparse
 import sys
 sys.path.append('/home/b532root/account/b532zxy/workspace')
-from Depression_k.model.main_model import DModel
-# from Depression_k.model.feature_model import DModel
-from Depression_k.tools.utils import EarlyStopping, load_config, save_heatmap_overlay, save_true_heatmap_overlay, save_epoch_info
-from Depression_k.dataloader import AudioVideoDataset
-# from Depression_k.model.loss import compute_loss, compute_final_score, MarginCrossEntropyLoss
-
-import numpy as np
+from Depression_all.model.main_model import DModel
+# from Depression_all.model.feature_model import DModel
+from Depression_all.tools.utils import EarlyStopping, load_config, save_epoch_info, validate_fea
+from Depression_all.dataloader import AudioVideoDataset
+from Depression_all.dataloader_2017 import AVEC2017AudioVideoDataset as AudioVideoDataset2
 import torch
 import torch.nn as nn
-from validate import validate_fea
 from tqdm import tqdm
 import os
 import pandas as pd
 import warnings
 import matplotlib.pyplot as plt
-import torch.optim.lr_scheduler as lr_scheduler
 import datetime
 from torch.utils.data import DataLoader, WeightedRandomSampler
-import torch.nn.functional as F
-from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import train_test_split
+import torch.optim.lr_scheduler as lr_scheduler
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = str(1)
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 TORCH_USE_CUDA_DSA = 1
 warnings.filterwarnings("ignore")
-config = load_config('/home/b532root/account/b532zxy/workspace/Depression_k/config.yaml')
-train_data_path = config['dataset']['train_data_path']
-dev_data_path = config['dataset']['dev_data_path']
-test_data_path = config['dataset']['test_data_path']
-train_label_path = config['dataset']['train_label_path']
-dev_label_path = config['dataset']['dev_label_path']
-test_label_path = config['dataset']['test_label_path']
+config = load_config('/home/b532root/account/b532zxy/workspace/Depression_all/config.yaml')
+dataset = config['dataset']
+if dataset != 'AVEC2014':
+    base_root = config[dataset]['base_root']
+else:
+    base_root = None
+train_path = config[dataset]['train_path']
+dev_path = config[dataset]['dev_path']
+w_o_ID = config['w_o_ID']
+w_o_SE = config['w_o_SE']
+w_o_SIM = config['w_o_SIM']
+w_o_Video_Guide = config['w_o_Video_Guide']
+audio_feature_type = config['audio_feature_type']
 current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # 定义超参数
 parser = argparse.ArgumentParser(description='Trainer for Multimodal Model')
-parser.add_argument('--train_data_path', default=train_data_path, type=str, help='训练数据路径')
-parser.add_argument('--dev_data_path', default=dev_data_path, type=str, help='验证数据路径')
-parser.add_argument('--test_data_path', default=test_data_path, type=str, help='测试数据路径')
-parser.add_argument('--train_label_path', default=train_label_path, type=str, help='训练标签路径')
-parser.add_argument('--dev_label_path', default=dev_label_path, type=str, help='验证标签路径')
-parser.add_argument('--test_label_path', default=test_label_path, type=str, help='测试标签路径')
-
-parser.add_argument('--best_emonet_path', default='/home/b532root/data/b532zxy/AVEC15/weights_mask/mask.pth',
+parser.add_argument('--dataset', default=dataset, help="选择数据集类型")
+parser.add_argument('--train_path', default=train_path, type=str, help='train标签路径')
+parser.add_argument('--dev_path', default=dev_path, type=str, help='dev标签路径')
+parser.add_argument('--base_root', default=base_root, type=str, help='dev标签路径')
+parser.add_argument('--best_emonet_path', default=f'/home/b532root/data/b532zxy/{dataset}/weights_mask_ID_{w_o_ID}_SE_{w_o_SE}/mask.pth',
                      type=str, help='emonet的预训练权重保存路径')
-parser.add_argument('--best_model_path', default='/home/b532root/data/b532zxy/AVEC15/weights_feature',
+parser.add_argument('--best_model_path', default=f'/home/b532root/data/b532zxy/{dataset}/weights_feature_ID_{w_o_ID}_SE_{w_o_SE}_SIM_{w_o_SIM}',
                      type=str, help='最好的模型保存路径')
-parser.add_argument('--save_path', default='/home/b532root/data/b532zxy/AVEC15/weights_feature',
+parser.add_argument('--save_path', default=f'/home/b532root/data/b532zxy/{dataset}/weights_feature_ID_{w_o_ID}_SE_{w_o_SE}_SIM_{w_o_SIM}',
                      type=str, help='模型保存路径')
-parser.add_argument('--log_dir', default=f'/home/b532root/account/b532zxy/workspace/Depression_k/result/{current_time}_fea/log',
-                     type=str, help='日志保存路径')
-parser.add_argument('--best_log', default=f'/home/b532root/account/b532zxy/workspace/Depression_k/result/{current_time}_fea/best_log.txt',
+parser.add_argument('--best_log', default=f'/home/b532root/account/b532zxy/workspace/Depression_all/result/{dataset}_{current_time}_fea_ID_{w_o_ID}_SE_{w_o_SE}_SIM_{w_o_SIM}/best_log.txt',
                      type=str, help='最佳模型日志保存路径')
-parser.add_argument('--training_log', default=f'/home/b532root/account/b532zxy/workspace/Depression_k/result/{current_time}_fea/training_log.txt',
+parser.add_argument('--training_log', default=f'/home/b532root/account/b532zxy/workspace/Depression_all/result/{dataset}_{current_time}_fea_ID_{w_o_ID}_SE_{w_o_SE}_SIM_{w_o_SIM}/training_log.txt',
                      type=str, help='训练日志保存路径')
-parser.add_argument('--loss_curve', default=f'/home/b532root/account/b532zxy/workspace/Depression_k/result/{current_time}_fea/loss_curve.png',
-                     type=str, help='损失曲线保存路径')
-parser.add_argument('--epoch_curve', default=f'/home/b532root/account/b532zxy/workspace/Depression_k/result/{current_time}_fea/epoch_curve.png',
-                     type=str, help='损失曲线每轮保存路径')
 parser.add_argument('--use_best_model', default=True, type=bool, help='使用模型')
-parser.add_argument('--epochs', default=100, type=int, help='训练轮次')
+parser.add_argument('--epochs', default=50, type=int, help='训练轮次')
 parser.add_argument('--batch_size', default=4, type=int, help='批处理大小')
-parser.add_argument('--lr', default=1e-3, type=float, help='学习率')
-parser.add_argument('--device', default=3, type=int, help='使用的GPU设备编号')
+if dataset == 'AVEC2014':
+    parser.add_argument('--lr', default=5e-4, type=float, help='学习率')
+elif dataset == 'AVEC2017':
+    parser.add_argument('--lr', default=5e-3, type=float, help='学习率')
+else:
+    parser.add_argument('--lr', default=5e-3, type=float, help='学习率')
+parser.add_argument('--device', default=1, type=int, help='使用的GPU设备编号')
 parser.add_argument('--momentum', default=0.9, type=float, help='动量参数')
 parser.add_argument('--weight_decay', default=1e-4, type=float, help='权重衰减')
 parser.add_argument('--best_l', default=1000, type=float, help='初始损失')
@@ -82,8 +78,10 @@ parser.add_argument('--CA_num_layers', default=2, type=int, help='可学习的�
 parser.add_argument('--y_min', default=0, type=int, help='')
 parser.add_argument('--y_max', default=41, type=int, help='')
 # parser.add_argument('--reduced_dim', default=64, type=int, help='降维')
-parser.add_argument('--dropout', default=0.3, type=float, help='dropout')
-parser.add_argument('--w_o_SIM', default=1, type=int, help='1 contain / 0 not contain')
+parser.add_argument('--dropout', default=0.4, type=float, help='dropout')
+parser.add_argument('--w_o_ID', default=w_o_ID, type=int, help='1 contain / 0 not contain')
+parser.add_argument('--w_o_SE', default=w_o_SE, type=int, help='1 contain / 0 not contain')
+parser.add_argument('--w_o_SIM', default=w_o_SIM, type=int, help='1 contain / 0 not contain')
 
 args = parser.parse_args()
 
@@ -101,34 +99,36 @@ def main(args):
     print("创建保存路径......", end="")
     os.makedirs(args.save_path, exist_ok=True)
     os.makedirs(args.best_model_path, exist_ok=True)
-    os.makedirs(args.log_dir, exist_ok=True)
     os.makedirs(os.path.dirname(args.training_log), exist_ok=True)
     os.makedirs(os.path.dirname(args.best_log), exist_ok=True)
-    os.makedirs(os.path.dirname(args.loss_curve), exist_ok=True)
-    os.makedirs(os.path.dirname(args.epoch_curve), exist_ok=True)
     print("\t\t创建保存路径完成√")
 
-    dataset_train = AudioVideoDataset(av_path=args.train_data_path, label_path=args.train_label_path, mode='train')
-    dataset_dev = AudioVideoDataset(av_path=args.dev_data_path, label_path=args.dev_label_path, mode='eval')
+    if args.dataset == 'AVEC2014':
+        dataset_train = AudioVideoDataset(root_dir=args.train_path, audio_feature_type = audio_feature_type)
+        dataset_dev = AudioVideoDataset(root_dir=args.dev_path, audio_feature_type = audio_feature_type)
+    else:
+        dataset_train = AudioVideoDataset2(base_root=args.base_root, label_csv=args.train_path, mode='train')
+        dataset_dev = AudioVideoDataset2(base_root=args.base_root, label_csv=args.dev_path, mode='dev')
     labels_train = [dataset_train[i]['label'].item() for i in range(len(dataset_train))]
 
     # ------------------ 重采样代码 ------------------
     # 针对标签大于20的样本赋予更高采样概率
-    num_samples_above_20 = sum(1 for l in labels_train if l >= 20)
-    num_samples_below_or_equal_20 = len(labels_train) - num_samples_above_20
-    # 避免除以零
-    if num_samples_above_20 == 0:
-        num_samples_above_20 = 1
-    if num_samples_below_or_equal_20 == 0:
-        num_samples_below_or_equal_20 = 1
-    weights = [1.0 / num_samples_above_20 if l >= 20 else 1.0 / num_samples_below_or_equal_20 for l in labels_train]
-    sampler = WeightedRandomSampler(weights, num_samples=len(dataset_train), replacement=True)
-    # --------------------------------------------------
-
-    train_loader = DataLoader(dataset=dataset_train, batch_size=args.batch_size, sampler=sampler, pin_memory=True, drop_last=False)
+    if args.dataset == 'AVEC2014':
+        num_samples_above_20 = sum(1 for l in labels_train if l >=20)
+        num_samples_below_or_equal_20 = len(labels_train) - num_samples_above_20
+        # 避免除以零
+        if num_samples_above_20 == 0:
+            num_samples_above_20 = 1
+        if num_samples_below_or_equal_20 == 0:
+            num_samples_below_or_equal_20 = 1
+        weights = [1.0 / num_samples_above_20 if l >= 20 else 1.0 / num_samples_below_or_equal_20 for l in labels_train]
+        sampler = WeightedRandomSampler(weights, num_samples=len(dataset_train), replacement=True)
+        train_loader = DataLoader(dataset=dataset_train, batch_size=args.batch_size, sampler=sampler, pin_memory=True, drop_last=False)
+    else:
+        train_loader = DataLoader(dataset=dataset_train, batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False)
     dev_loader = DataLoader(dataset=dataset_dev, batch_size=args.batch_size, shuffle=False, pin_memory=True, drop_last=False)
     
-    args.num_id_classes = dataset_train.num_id_classes  # 从数据集获取身份类别数量
+    # args.num_id_classes = dataset_train.num_id_classes  # 从数据集获取身份类别数量
     train(train_loader, dev_loader, args)
 
 
@@ -150,9 +150,8 @@ def train(train_loader, test_loader, args):
             start_epoch = checkpoint['epoch'] + 1
             model.load_state_dict(checkpoint['model_state_dict'])
             best_l = checkpoint.get('best_l', float('inf'))
-            print(f"\t\t检测到检查点，正在加载...... 从 epoch {start_epoch} 处继续训练√")
+            print(f"\t\t检测到检查点, 正在加载...... 从 epoch {start_epoch} 处继续训练√")
         else:
-            # 检查点文件为最后一轮的保存，忽略检查点，从头开始训练
             print("\t\t检测到检查点文件为最后一轮保存，重新从头开始训练√")
             start_epoch = 0
     elif args.use_best_model:
@@ -169,30 +168,29 @@ def train(train_loader, test_loader, args):
         start_epoch = 0
     
     print("初始化优化器......", end="")
-    log_var_ff = torch.zeros(1, requires_grad=True, device=args.device)
-    log_var_nw = torch.zeros(1, requires_grad=True, device=args.device)
+    log_var = torch.zeros(1, requires_grad=True, device=args.device)
     optimizer_e = torch.optim.AdamW(
-        list(model.parameters()) + [log_var_ff, log_var_nw],
+        list(model.parameters()) + [log_var],
         lr=args.lr, weight_decay=args.weight_decay
     )
-    # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_e, mode='min', factor=0.8, patience=10, verbose=True)
-    scheduler = CosineAnnealingWarmRestarts(optimizer_e, T_0=10, T_mult=2, eta_min=1e-4)
+    if dataset == 'AVEC2014':
+        scheduler = CosineAnnealingWarmRestarts(optimizer_e, T_0=10, T_mult=2, eta_min=1e-5)
+    elif dataset == 'AVEC2017':
+        scheduler = CosineAnnealingWarmRestarts(optimizer_e, T_0=20, T_mult=1, eta_min=1e-5)
+    else:
+        scheduler = CosineAnnealingWarmRestarts(optimizer_e, T_0=20, T_mult=1, eta_min=1e-5)
+
 
     print("\t\t初始化优化器完成√")
-
     print("早停正在启动......", end="")
-    early_stopping = EarlyStopping(patience=15, verbose=True)
-    # early_stopping = None
+    early_stopping = None
     if early_stopping is not None:
         print("\t\t早停机制启动完成√")
     else:
         print("\t\t早停机制启动失败×")
 
-    # 使用均方误差作为回归损失函数
-    # criterion = nn.MSELoss(reduction='mean')
     criterion = nn.HuberLoss(delta=7.0)
     print("------------------begin training------------------")
-    # 修改训练循环从 start_epoch 开始
     with open(args.training_log, "a") as f_log, open(args.best_log, "a") as f_best:
         for epoch in range(start_epoch, args.epochs):
 
@@ -201,26 +199,18 @@ def train(train_loader, test_loader, args):
             loader = tqdm(train_loader)
             args.mode = 'train'
             for batch_idx, data in enumerate(loader):
-                ff_video_features = data['ff_video_features'].cuda(args.device)
-                ff_audio_features = data['ff_audio_features'].cuda(args.device)
-                nw_video_features = data['nw_video_features'].cuda(args.device)
-                nw_audio_features = data['nw_audio_features'].cuda(args.device)
-                dir_name = data['dir_name']
+                video_features = data['video_features'].cuda(args.device)
+                audio_features = data['audio_features'].cuda(args.device)
                 labels = data['label'].cuda(args.device).view(-1, 1)
-                # labels = (labels - args.y_min) / (args.y_max - args.y_min)
+                dir_name = data['dir_name']
 
                 optimizer_e.zero_grad()
 
-                outputs, ffv_features, nwv_features, ffa_features, nwa_features,\
-                      ff_emotionAlignmentLoss, nw_emotionAlignmentLoss = model(ff_video_features, ff_audio_features, \
-                                nw_video_features, nw_audio_features, mode='train')  
+                outputs, _, _, ff_emotionAlignmentLoss = model(video_features, audio_features, mode='train')  
                 loss_regression = criterion(outputs, labels)
-                # loss = loss_regression
-                # print(loss_regression,ff_emotionAlignmentLoss,nw_emotionAlignmentLoss)
                 if args.w_o_SIM == 1:
                     loss = loss_regression \
-                        + torch.exp(-log_var_ff) * ff_emotionAlignmentLoss + log_var_ff \
-                        + torch.exp(-log_var_nw) * nw_emotionAlignmentLoss + log_var_nw
+                        + torch.exp(-log_var) * ff_emotionAlignmentLoss + log_var
                 else:
                     loss = loss_regression
                 
@@ -253,7 +243,6 @@ def train(train_loader, test_loader, args):
                 
                 loader.set_description(f"Epoch:{epoch+1} Step:{step} RMSE:{rmse:.2f} MAE:{mae:.2f}")
                 
-            save_epoch_info(train_epoch_info, args.log_dir, phase='train', epoch = epoch)
 
             train_rmse /= step
             train_mae /= step
@@ -261,10 +250,8 @@ def train(train_loader, test_loader, args):
             train_losses.append(train_loss)
 
             model.eval()
-            args.log_var_ff = log_var_ff
-            args.log_var_nw = log_var_nw
+            args.log_var = log_var
             val_rmes, val_mae, val_loss, val_epoch_info = validate_fea(args, model, test_loader, args.device, criterion, mode='dev')
-            save_epoch_info(val_epoch_info, args.log_dir, phase='eval', epoch = epoch)
             val_losses.append(val_loss)
 
             scheduler.step(val_loss)
@@ -277,7 +264,6 @@ def train(train_loader, test_loader, args):
             plt.legend()
             plt.title(f'Training and Validation Loss Curve (Epoch {epoch+1})')
             plt.xticks(range(1, len(train_losses) + 1))
-            plt.savefig(args.epoch_curve)
             plt.close()
 
             if early_stopping is not None:
@@ -312,7 +298,6 @@ def train(train_loader, test_loader, args):
     plt.ylabel('Loss')
     plt.legend()
     plt.title('Training and Validation Loss Curve')
-    plt.savefig(args.loss_curve)
 
 if __name__ == '__main__':
     main(args)

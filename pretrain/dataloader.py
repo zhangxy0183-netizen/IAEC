@@ -103,10 +103,10 @@ def create_dataloaders(train_csv, val_csv, test_csv, identity_csv, batch_size, n
 
 # Example usage
 if __name__ == "__main__":
-    train_csv_path = "/home/b532root/data/b532zxy/AVEC15/pretrain/train.csv"
-    val_csv_path   = "/home/b532root/data/b532zxy/AVEC15/pretrain/dev.csv"
-    test_csv_path  = "/home/b532root/data/b532zxy/AVEC15/pretrain/test.csv"
-    identity_csv_path = "/home/b532root/data/b532zxy/AVEC15/file_identity.csv"  # 存储 file, identity 两列
+    train_csv_path = "/home/b532root/data/b532zxy/AVEC2014/pretrain/train.csv"
+    val_csv_path   = "/home/b532root/data/b532zxy/AVEC2014/pretrain/dev.csv"
+    test_csv_path  = "/home/b532root/data/b532zxy/AVEC2014/pretrain/test.csv"
+    identity_csv_path = "/home/b532root/data/b532zxy/AVEC2014/file_identity.csv"  # 存储 file, identity 两列
 
     train_loader, val_loader, test_loader = create_dataloaders(
         train_csv=train_csv_path,

@@ -24,7 +24,6 @@ class EmotionAlignmentLoss(nn.Module):
         m = 0.5 * (p + q)
         p_log = torch.log(p + 1e-8)
         q_log = torch.log(q + 1e-8)
-        m_log = torch.log(m + 1e-8)
 
         js = 0.5 * (F.kl_div(p_log, m, reduction='batchmean') +
                     F.kl_div(q_log, m, reduction='batchmean'))
@@ -35,8 +34,6 @@ class EmotionAlignmentLoss(nn.Module):
         计算视频与音频相似度矩阵之间的 MSE + JS 散度损失。
         """
         mse_loss = F.mse_loss(video_matrix, audio_matrix)
-
-        # JS散度用于衡量两个概率分布（注意：video_matrix 和 audio_matrix 已是 softmax 后的分布）
         js_loss = self.js_divergence(video_matrix, audio_matrix)
 
         loss = mse_loss + 0.1 * js_loss

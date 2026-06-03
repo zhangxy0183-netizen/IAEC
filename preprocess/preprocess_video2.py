@@ -6,8 +6,8 @@ import pandas as pd
 import cv2
 from tqdm import tqdm
 import torch
-from Depression_k.tools.utils import load_config
-config = load_config('/home/b532root/account/b532zxy/workspace/Depression_k/config.yaml')
+from Depression_all.tools.utils import load_config
+config = load_config('/home/b532root/account/b532zxy/workspace/Depression_all/config.yaml')
 root_folder = config['dataset']['path']
 label_path = config['dataset']['all_label_path']
 processed_path = config['dataset']['processed_path']
@@ -101,7 +101,7 @@ def get_face():
             for file in loader:
                 # 如203_1/0.jpg
                 img_path = d + '/' + file
-                # /home/b532root/data/b532zxy/database/AVEC15/processed/train/Freeform/ 203_1/0
+                # /home/b532root/data/b532zxy/database/AVEC2014/processed/train/Freeform/ 203_1/0
                 s_path = save_path[index] + d.split('/')[-1] + '/' + file[:-4]
                 os.makedirs(s_path, exist_ok=True)
                 loader.set_description_str(f"成功读取图像: {img_path}")

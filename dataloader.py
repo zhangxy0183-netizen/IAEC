@@ -1,183 +1,193 @@
 import os
-import torch
-from torch.utils.data import Dataset
-import torchvision.transforms as transforms
-import cv2
 import re
 import numpy as np
 import pandas as pd
 from PIL import Image
-import librosa
-import random
-import opensmile
-import warnings
-warnings.filterwarnings("ignore", message="PySoundFile failed. Trying audioread instead")
-warnings.filterwarnings("ignore", category=FutureWarning)
+import torch
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 
 class AudioVideoDataset(Dataset):
-    def __init__(self, av_path, label_path, indices=None, num_frames=50, mode='train'):
-        self.av_path = av_path
-        self.label = pd.read_csv(label_path)
+    def __init__(self, root_dir: str, num_frames: int = 50, select_frames: int = 15, 
+                 audio_noise_std: float = 0.0,
+                 visual_occlusion_ratio: float = 0.0,
+                 visual_occlusion_mode: str = "none",
+                 audio_feature_type: str = "audio_npy"):
+        """
+        root_dir:    数据根目录，包含：
+                     - train/, dev/, test/ 三个子目录，每个目录下含样本子文件夹（如 Freeform_321_2、Northwind_306_3…共92个）
+                     - 每个子目录下含 heatmaps/ 子文件夹和多帧图像文件
+                     - 每个子目录下含 audio_npy/ 子目录，存放 `{dir_name}.npy`
+                     - 每个子目录下含标签 CSV: train_label.csv, dev_label.csv, test_label.csv
+        num_frames:  每个样本前 num_frames 帧参与抽取（默认 50)
+        select_frames: 最终等差抽取 select_frames 帧（默认 15)
+        mode:        'train', 'dev' 或 'test'
+        audio_noise_std=0.0: 默认不加测试噪声
+        visual_occlusion_ratio=0.0: 默认不做测试遮挡
+        visual_occlusion_mode="none": 默认不遮挡
+        audio_feature_type: audio_npy就是MFCC + EGEMAPS特征, 还有wav2vec2和hubert
+        """
+        self.root = root_dir
         self.num_frames = num_frames
-        self.mode = mode
-        self.face_pattern = re.compile(r'face(\d+)')
-        self.freeform_pictures = sorted([f for f in os.listdir(os.path.join(av_path, 'Freeform'))
-                                         if f not in ['audio', 'audio_npy']])
-        self.northwind_pictures = sorted([f for f in os.listdir(os.path.join(av_path, 'Northwind'))
-                                          if f not in ['audio', 'audio_npy']])
-        train_id_path = "/home/b532root/data/b532zxy/AVEC15/train/Freeform"
-        test_id_path = "/home/b532root/data/b532zxy/AVEC15/test/Freeform"
-        dev_id_path = "/home/b532root/data/b532zxy/AVEC15/dev/Freeform"
+        self.select_frames = select_frames
+        self.mode = os.path.basename(root_dir)
+        self.audio_noise_std = audio_noise_std
+        self.visual_occlusion_ratio = visual_occlusion_ratio
+        self.visual_occlusion_mode = visual_occlusion_mode
+        self.audio_feature_type = audio_feature_type
+        # 1. 读取本模式的标签文件
+        label_csv = os.path.join(root_dir, f"{self.mode}_label.csv")
+        df = pd.read_csv(label_csv, dtype={'file': str})
+        self.label_map = dict(zip(df['file'], df['label']))
 
-        # 定义需要排除的文件夹名称
-        exclude = {'audio'}
+        # 2. 列出样本文件夹
+        self.sample_dirs = sorted([
+            d for d in os.listdir(root_dir)
+            if os.path.isdir(os.path.join(root_dir, d)) and d != 'audio_npy' and d != 'wav2vec2' and d != 'hubert'
+        ])
 
-        def get_id_folders(path):
-            return [f for f in os.listdir(path)
-                    if f not in exclude and os.path.isdir(os.path.join(path, f))]
+        # 3. 构建全局 identity 映射
+        base_dir = os.path.abspath(os.path.join(root_dir, os.pardir))
+        label_paths = [
+            os.path.join(base_dir, 'train', 'train_label.csv'),
+            os.path.join(base_dir, 'dev',   'dev_label.csv'),
+            os.path.join(base_dir, 'test',  'test_label.csv'),
+        ]
+        persons = set()
+        for p in label_paths:
+            dff = pd.read_csv(p, dtype={'file': str})
+            persons.update(fname.split('_')[0] for fname in dff['file'])
+        persons = sorted(persons)
+        self.person2idx = {pid: i for i, pid in enumerate(persons)}
 
-        # 分别从三个路径获取文件夹名称列表
-        train_ids = get_id_folders(train_id_path)
-        test_ids = get_id_folders(test_id_path)
-        dev_ids = get_id_folders(dev_id_path)
+        # 用于按文件名数字排序
+        self.num_pattern = re.compile(r'face(\d+)')
 
-        # 合并三个列表去重后排序
-        id_set = sorted(set(train_ids + test_ids + dev_ids))
-        person_ids = sorted(set([name.split('_')[0] for name in id_set]))
-        self.person_id_to_index = {pid: idx for idx, pid in enumerate(person_ids)}
-        self.num_id_classes = len(self.person_id_to_index)
-        self.file_to_label = dict(zip(self.label['file'], self.label['label']))
-        # 如果提供了 indices，则只保留指定的索引
-        if indices is not None:
-            self.freeform_pictures = [self.freeform_pictures[i] for i in indices]
-            self.northwind_pictures = [self.northwind_pictures[i] for i in indices]
-
+        # 定义图像 transform
         if self.mode == 'train':
-            # 对训练图像增强，先在 PIL 图像上进行变换，再转换为 Tensor、归一化，最后随机遮挡部分区域
-            self.ff_video_transform = transforms.Compose([
-                transforms.RandomResizedCrop((256, 256), scale=(0.9, 1.0)),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(degrees=10),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+            self.transforms = transforms.Compose([
+                transforms.RandomResizedCrop((256,256), scale=(0.9,1.0)),
+                transforms.RandomHorizontalFlip(0.5),
+                transforms.RandomRotation(10),
+                transforms.ColorJitter(0.2,0.2,0.2,0.05),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4513, 0.3201, 0.3194], std=[0.2726, 0.2528, 0.2840]),
-                transforms.RandomErasing(p=0.3, scale=(0.02, 0.33), ratio=(0.3, 3.3))
-            ])
-            self.nw_video_transform = transforms.Compose([
-                transforms.RandomResizedCrop((256, 256), scale=(0.9, 1.0)),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(degrees=10),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4539, 0.3249, 0.3231], std=[0.2744, 0.2541, 0.2874]),
-                transforms.RandomErasing(p=0.3, scale=(0.02, 0.33), ratio=(0.3, 3.3))
+                transforms.Normalize([0.4526, 0.3225, 0.3212],[0.2735, 0.2535, 0.2857]),
+                transforms.RandomErasing(p=0.3, scale=(0.02,0.33), ratio=(0.3,3.3))
             ])
         else:
-            ff_eval_transform = transforms.Compose([
-                transforms.Resize((256, 256)),
+            self.transforms = transforms.Compose([
+                transforms.Resize((256,256)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4513, 0.3201, 0.3194], std=[0.2726, 0.2528, 0.2840]),
+                transforms.Normalize([0.4526, 0.3225, 0.3212],[0.2735, 0.2535, 0.2857])
             ])
-            nw_eval_transform = transforms.Compose([
-                transforms.Resize((256, 256)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.4539, 0.3249, 0.3231], std=[0.2744, 0.2541, 0.2874]),
-            ])
-            self.ff_video_transform = ff_eval_transform
-            self.nw_video_transform = nw_eval_transform
 
     def __len__(self):
-        return len(self.freeform_pictures)
+        return len(self.sample_dirs)
 
     def __getitem__(self, idx):
-        ff_dir_name = self.freeform_pictures[idx]
-        ff_pictures_path = os.path.join(self.av_path, 'Freeform', ff_dir_name)
-        ff_audio_features_path = os.path.join(self.av_path, 'Freeform/audio/frame_15/', ff_dir_name + ".npy")
+        dir_name = self.sample_dirs[idx]
+        sample_folder = os.path.join(self.root, dir_name)
 
-        nw_dir_name = self.northwind_pictures[idx]
-        nw_pictures_path = os.path.join(self.av_path, 'Northwind', nw_dir_name)
-        nw_audio_features_path = os.path.join(self.av_path, 'Northwind/audio/frame_15/', nw_dir_name + ".npy")
+        # 1. 加载并等差抽取图像帧
+        img_list = sorted([
+            f for f in os.listdir(sample_folder)
+            if f.lower().endswith(('.jpg','.png','.bmp'))
+        ], key=lambda x: int(self.num_pattern.search(x).group(1)))[:self.num_frames]
+        indices = np.linspace(0, self.num_frames-1, self.select_frames, dtype=int)
+        imgs = []
+        for i in indices:
+            img = self.transforms(Image.open(os.path.join(sample_folder, img_list[i])).convert('RGB'))
+            if self.mode == 'test':
+                img = self.apply_occlusion(img)
+            imgs.append(img)
+        images = torch.stack(imgs, dim=0)
 
-        label = self.file_to_label[ff_dir_name]
-        
-        person_id = ff_dir_name.split('_')[0]
-        id_index = self.person_id_to_index[person_id]
+        # 2. 加载并等差抽取 heatmap
+        hm_folder = os.path.join(sample_folder, 'heatmaps')
+        hm_list = sorted([
+            f for f in os.listdir(hm_folder) if f.lower().endswith('.npy')
+        ], key=lambda x: int(self.num_pattern.search(x).group(1)))[:self.num_frames]
+        hms = [
+            torch.from_numpy(np.load(os.path.join(hm_folder, hm_list[i])))
+            for i in indices
+        ]
+        heatmaps = torch.stack(hms, dim=0)
 
-        ff_video_features, ff_heatmap_stack = self.get_sorted_images(ff_pictures_path, num_frames=self.num_frames, type='Freeform')
-        ff_audio_features = np.load(ff_audio_features_path).astype(np.float32) 
-
-        nw_video_features, nw_heatmap_stack = self.get_sorted_images(nw_pictures_path, num_frames=self.num_frames, type='Northwind')
-        nw_audio_features = np.load(nw_audio_features_path).astype(np.float32)
-
-        # 在训练模式下对音频特征添加噪声进行数据增强
+        # 3. 加载音频特征（位于当前目录下的 audio_feature_type)
+        audio_path = os.path.join(self.root, self.audio_feature_type, f"{dir_name}.npy")
+        audio = torch.from_numpy(np.load(audio_path).astype(np.float32))
         if self.mode == 'train':
-            ff_audio_features = self.add_feature_noise(ff_audio_features, noise_level=0.01).astype(np.float32)
-            nw_audio_features = self.add_feature_noise(nw_audio_features, noise_level=0.01).astype(np.float32)
+            audio += torch.randn_like(audio) * 0.01
+
+        if self.mode == 'test' and self.audio_noise_std > 0:
+            audio = audio + torch.randn_like(audio) * self.audio_noise_std
+
+        # 4. label 与 identity
+        file_id = "_".join(dir_name.split("_")[1:])
+        label = torch.tensor(float(self.label_map[file_id]), dtype=torch.float32)
+        pid = file_id.split('_')[0]
+        identity = torch.tensor(self.person2idx[pid], dtype=torch.long)
 
         return {
-            'ff_video_features': ff_video_features,
-            'ff_audio_features': ff_audio_features,
-            'nw_video_features': nw_video_features,
-            'nw_audio_features': nw_audio_features,
-            'ff_heatmap_stack': ff_heatmap_stack,
-            'nw_heatmap_stack': nw_heatmap_stack,
-            'dir_name': ff_dir_name,
-            'identity': torch.tensor(id_index, dtype=torch.long),
-            'label': torch.tensor(label, dtype=torch.float),
+            'video_features': images,
+            'audio_features': audio,
+            'heatmap_stacks': heatmaps,
+            'label': label,
+            'identity': identity,
+            'dir_name': file_id
         }
+    
+    def apply_occlusion(self, img_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        img_tensor: [C, H, W]
+        """
+        if self.visual_occlusion_ratio <= 0 or self.visual_occlusion_mode == "none":
+            return img_tensor
 
-    def get_sorted_images(self, directory, num_frames=50, select_frames=15, type=None):
-        # 列出目录中的所有图片文件
-        files = [f for f in os.listdir(directory) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp'))]
-        
-        if len(files) < num_frames:
-            raise ValueError(f"文件夹中的图片数量不足 {num_frames} 张，只有 {len(files)} 张。")
-        
-        # 按照文件名中匹配的数字进行排序
-        sorted_files = sorted(files, key=lambda x: int(self.face_pattern.search(x).group(1)))[:num_frames]
-        
-        # 等差选择图片索引
-        indices = np.linspace(0, num_frames - 1, select_frames, dtype=int)
-        selected_files = [sorted_files[i] for i in indices]
-        
-        # 加载并转换图片
-        if type == 'Freeform':
-            image_tensors = [self.ff_video_transform(Image.open(os.path.join(directory, file)).convert('RGB'))
-                            for file in selected_files]
+        c, h, w = img_tensor.shape
+        occ_area = int(h * w * self.visual_occlusion_ratio)
+        occ_h = int(np.sqrt(occ_area))
+        occ_w = int(np.sqrt(occ_area))
+
+        occ_h = max(1, min(occ_h, h))
+        occ_w = max(1, min(occ_w, w))
+
+        if self.visual_occlusion_mode == "center":
+            top = (h - occ_h) // 2
+            left = (w - occ_w) // 2
+        elif self.visual_occlusion_mode == "upper":
+            top = 0
+            left = (w - occ_w) // 2
+        elif self.visual_occlusion_mode == "lower":
+            top = h - occ_h
+            left = (w - occ_w) // 2
+        elif self.visual_occlusion_mode == "random":
+            top = np.random.randint(0, h - occ_h + 1)
+            left = np.random.randint(0, w - occ_w + 1)
         else:
-            image_tensors = [self.nw_video_transform(Image.open(os.path.join(directory, file)).convert('RGB'))
-                            for file in selected_files]
-        
-        image_stack = torch.stack(image_tensors, dim=0)
+            return img_tensor
 
-        # -------------------------------
-        # 处理 heatmaps 文件夹中的数据
-        # -------------------------------
-        heatmap_dir = os.path.join(directory, "heatmaps")
-        heatmap_files = [f for f in os.listdir(heatmap_dir) if f.lower().endswith('.npy')]
-        
-        if len(heatmap_files) < num_frames:
-            raise ValueError(f"heatmaps 文件夹中的文件数量不足 {num_frames} 张，只有 {len(heatmap_files)} 张。")
-        
-        # 同样使用 face_pattern 对 heatmap 文件进行排序
-        sorted_heatmap_files = sorted(heatmap_files, key=lambda x: int(self.face_pattern.search(x).group(1)))[:num_frames]
-        
-        # 等差选择 heatmap 文件
-        selected_heatmap_files = [sorted_heatmap_files[i] for i in indices]
-        
-        # 加载 heatmap 数据（假设每个 .npy 文件存储的是一个数组）
-        heatmap_tensors = [torch.from_numpy(np.load(os.path.join(heatmap_dir, file)))
-                        for file in selected_heatmap_files]
-        
-        # 假设这些 heatmap 的形状一致，可以堆叠起来
-        heatmap_stack = torch.stack(heatmap_tensors, dim=0)
-        
-        # 返回图片张量和 heatmap 张量
-        return image_stack, heatmap_stack
-
-    def add_feature_noise(self, feature, noise_level=0.01):
-        """
-        对音频特征添加高斯噪声进行数据增强
-        """
-        noise = np.random.randn(*feature.shape) * noise_level
-        return feature + noise
+        img_tensor[:, top:top+occ_h, left:left+occ_w] = 0.0
+        return img_tensor
+    
+if __name__ == "__main__":
+    # 测试各模式数据集
+    modes = ['train', 'dev', 'test']
+    base_path = "/home/b532root/data/b532zxy/AVEC2014"
+    for m in modes:
+        root = os.path.join(base_path, m)
+        print(f"\nMode: {m}")
+        ds = AudioVideoDataset(root_dir=root, audio_feature_type="hubert")
+        print(f"  Sample count: {len(ds)}")
+        # 打印第一个样本信息
+        sample = ds[0]
+        print("  dir_name:", sample['dir_name'])
+        print("  video_features:", sample['video_features'].shape)
+        print("  heatmaps:", sample['heatmap_stacks'].shape)
+        print("  audio_features:", sample['audio_features'].shape)
+        print("  identity:", sample['identity'])
+        print("  label:", sample['label'])
+        # 测试 DataLoader
+        loader = DataLoader(ds, batch_size=2, shuffle=False)
+        batch = next(iter(loader))
+        print("  Batch dir_names:", batch['dir_name'])

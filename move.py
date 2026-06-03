@@ -1,68 +1,77 @@
-#!/usr/bin/env python3
 import os
 import shutil
 
-def main():
-    # w_all wo_id wo_sim wo_se
-    mode = 'w_all'
-    # 定义源文件路径和目标重命名后的路径
-    src_cam = "/home/b532root/data/b532zxy/AVEC15/weights_cam/best.pth"
-    src_feature = "/home/b532root/data/b532zxy/AVEC15/weights_feature/best.pth"
-    src_mask = "/home/b532root/data/b532zxy/AVEC15/weights_mask/mask.pth"
 
-    new_name_cam = "/home/b532root/data/b532zxy/AVEC15/weights_cam/best_cam_" + mode + ".pth"
-    new_name_feature = "/home/b532root/data/b532zxy/AVEC15/weights_feature/best_fea_" + mode + ".pth"
-    new_name_mask = "/home/b532root/data/b532zxy/AVEC15/weights_mask/best_mask" + mode + ".pth"
+def safe_move(src, dst):
+    """
+    安全移动文件：
+    1. 源文件不存在：跳过，不报错
+    2. 目标文件已存在：先删除旧文件
+    """
+    if not os.path.exists(src):
+        print(f"Skipped: {src} does not exist")
+        return
 
-    destination = "/home/b532root/data/b532zxy/AVEC15/result"
-    
-    dest_cam = os.path.join(destination, "best_cam_" + mode + ".pth")
-    dest_feature = os.path.join(destination, "best_fea_" + mode + ".pth")
-    dest_mask = os.path.join(destination, "best_mask_" + mode + ".pth")
-    # 定义目标目录
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
 
-    
-    # 确保目标目录存在
-    os.makedirs(destination, exist_ok=True)
+    if os.path.exists(dst):
+        os.remove(dst)
+        print(f"Deleted existing target: {dst}")
 
-    # 1. 重命名源文件（避免移动时重名冲突）
-    try:
-        print(f"重命名 {src_cam} 为 {new_name_cam}")
-        os.rename(src_cam, new_name_cam)
-    except Exception as e:
-        print(f"重命名 {src_cam} 失败: {e}")
+    shutil.move(src, dst)
+    print(f"Moved and renamed: {src} -> {dst}")
 
-    try:
-        print(f"重命名 {src_feature} 为 {new_name_feature}")
-        os.rename(src_feature, new_name_feature)
-    except Exception as e:
-        print(f"重命名 {src_feature} 失败: {e}")
 
-    try:
-        print(f"重命名 {src_mask} 为 {new_name_mask}")
-        os.rename(src_mask, new_name_mask)
-    except Exception as e:
-        print(f"重命名 {src_mask} 失败: {e}")
+def safe_delete(path):
+    """
+    安全删除文件：
+    文件不存在也不报错
+    """
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"Deleted: {path}")
+    else:
+        print(f"Skipped delete: {path} does not exist")
 
-    try:
-        print(f"移动 {new_name_cam} 到 {dest_cam}")
-        shutil.move(new_name_cam, dest_cam)
-    except Exception as e:
-        print(f"移动 {new_name_cam} 失败: {e}")
 
-    try:
-        print(f"移动 {new_name_feature} 到 {dest_feature}")
-        shutil.move(new_name_feature, dest_feature)
-    except Exception as e:
-        print(f"移动 {new_name_feature} 失败: {e}")
+def rename_and_move_files(base_dir):
+    result_dir = os.path.join(base_dir, 'result')
+    os.makedirs(result_dir, exist_ok=True)
 
-    try:
-        print(f"移动 {new_name_mask} 到 {dest_mask}")
-        shutil.move(new_name_mask, dest_mask)
-    except Exception as e:
-        print(f"移动 {new_name_mask} 失败: {e}")
+    special_masks = [
+        "weights_mask_ID_1_SE_1",
+        "weights_mask_ID_1_SE_0",
+        "weights_mask_ID_0_SE_1",
+        "weights_mask_ID_0_SE_0"
+    ]
 
-    print("文件移动完成！")
+    for folder in special_masks:
+        src = os.path.join(base_dir, folder, "mask.pth")
+        dst = os.path.join(result_dir, f"{folder}.pth")
+        safe_move(src, dst)
 
-if __name__ == "__main__":
-    main()
+    other_folders = [
+        "weights_feature_ID_1_SE_1_SIM_1",
+        "weights_feature_ID_1_SE_1_SIM_0",
+        "weights_feature_ID_1_SE_0_SIM_1",
+        "weights_feature_ID_0_SE_1_SIM_1",
+        "weights_cam_ID_1_SE_1_SIM_1_VIDEO_1",
+        "weights_cam_ID_1_SE_1_SIM_1_VIDEO_0",
+        "weights_cam_ID_1_SE_1_SIM_0_VIDEO_1",
+        "weights_cam_ID_1_SE_0_SIM_1_VIDEO_1",
+        "weights_cam_ID_0_SE_1_SIM_1_VIDEO_1"
+    ]
+
+    for folder in other_folders:
+        checkpoint_path = os.path.join(base_dir, folder, "checkpoint.pth")
+        safe_delete(checkpoint_path)
+
+        src = os.path.join(base_dir, folder, "best.pth")
+        dst = os.path.join(result_dir, f"{folder}.pth")
+        safe_move(src, dst)
+
+
+if __name__ == '__main__':
+    base_folder_name = 'AVEC2014'
+    base_dir = os.path.join("/home/b532root/data/b532zxy", base_folder_name)
+    rename_and_move_files(base_dir)

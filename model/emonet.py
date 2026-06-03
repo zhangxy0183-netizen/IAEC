@@ -137,7 +137,7 @@ class HourGlass(nn.Module):
 # EmoNet模型
 class EmoNet(nn.Module):
     def __init__(self, num_modules=1, n_expression=128, n_blocks=1, 
-                    attention=True, num_identities=77, grl_lambda=0.5, w_o_SE = 0, dropout_rate=0.3):
+                    attention=True, num_identities=77, grl_lambda=0.5, w_o_SE = 1, dropout_rate=0.3):
         super(EmoNet, self).__init__()
         self.num_modules = num_modules
         self.n_expression = n_expression
@@ -177,7 +177,7 @@ class EmoNet(nn.Module):
             nn.Linear(256, 128),
             nn.BatchNorm1d(128),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(128, n_expression)
         )
 
@@ -188,13 +188,13 @@ class EmoNet(nn.Module):
         self.identity_classifier = nn.Sequential(
             nn.Linear(n_expression, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(256, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(256, 128),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(128, num_identities)
         )
 
@@ -202,13 +202,13 @@ class EmoNet(nn.Module):
         self.depression_regression = nn.Sequential(
             nn.Linear(n_expression, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(256, 256),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(256, 128),
             nn.ReLU(inplace=True),
-            nn.Dropout(dropout_rate),  # 添加dropout
+            nn.Dropout(dropout_rate), 
             nn.Linear(128, 1)
         )
     
@@ -234,7 +234,6 @@ class EmoNet(nn.Module):
             hg_features.append(ll)
         hg_features_cat = torch.cat(tuple(hg_features), dim=1)
 
-        # 注意力模块：通过生成 mask 进行加性融合
         if self.attention:
             mask = torch.sum(tmp_out, dim=1, keepdim=True)
             mask = torch.sigmoid(mask)  # 生成 mask, torch.Size([batch, 1, H, W])
@@ -243,7 +242,6 @@ class EmoNet(nn.Module):
         else:
             hg_features_cat = torch.cat([x, hg_features_cat], dim=1)
 
-        # 提取最终情感特征
         emo_feat_conv1D = self.conv1x1_input_emo_2(hg_features_cat)
         final_features = self.emo_net_2(emo_feat_conv1D)
         final_features = self.avg_pool_2(final_features)
@@ -259,12 +257,10 @@ class EmoNet(nn.Module):
         final_features = final_features[:, -1, :]
         
         final_features = F.normalize(final_features, p=2, dim=-1)
-        # --- 新增身份判别分支 ---
-        # 通过GRL对情感特征进行身份判别，确保特征不含身份信息
+
         id_features = self.grl(final_features)
         id_logits = self.identity_classifier(id_features)
         regression_output = self.depression_regression(final_features)
-        # 返回三个输出：
         # mask：热力图，用于解释性可视化
         # final_features：用于抑郁检测回归任务的情感特征
         # id_logits：用于身份判别任务的预测
@@ -274,4 +270,11 @@ class EmoNet(nn.Module):
         for module in self.children():
             module.eval()
 
-
+if __name__ == "__main__":
+    model = EmoNet()
+    x = torch.randn(15, 3, 256, 256)
+    mask, final_features, id_logits, regression_output = model(x)
+    print("Mask shape:", mask.shape)
+    print("Final features shape:", final_features.shape)
+    print("Identity logits shape:", id_logits.shape)
+    print("Regression output shape:", regression_output.shape)

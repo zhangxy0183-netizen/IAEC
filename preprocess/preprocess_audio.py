@@ -7,11 +7,15 @@ from modelscope.utils.constant import Tasks
 import opensmile
 import sys
 sys.path.append('/home/b532root/account/b532zxy/workspace')
-from Depression_k.tools.utils import load_config
-# config = load_config('/home/b532root/account/b532zxy/workspace/Dmine_Kfold/config.yaml')
-# root_folder = config['dataset']['path']
-# label_path = config['dataset']['all_label_path']
-# processed_path = config['dataset']['processed_path']
+from Depression_all.tools.utils import load_config
+#!/usr/bin/env python3
+import os
+import glob
+import numpy as np
+import librosa
+import opensmile
+import argparse
+from sklearn.preprocessing import StandardScaler
 
 def get_files(path):
     file_info = os.walk(path)
@@ -42,68 +46,7 @@ def convert_video_to_wav(root_dir):
                 # 调用函数提取音频
                 convert_video_to_wav(video_path, audio_output_path)
                 print(f"Extracted audio from {video_path} to {audio_output_path}")
-# 利用emotion2vec提取音频的句子级别特征（1024维）
-def extract_emotion2vec_plus_large(directory_path, batch_size=16):
-    inference_pipeline = pipeline(
-            task=Tasks.emotion_recognition,
-            model="iic/emotion2vec_plus_large",
-            device = 'cuda:1' if torch.cuda.is_available() else 'cpu')
-    files = get_files(directory_path)
-    failed_files = []  # 保存处理失败的文件
-    # 分批处理文件
-    for i in range(0, len(files), batch_size):
-        batch_files = files[i:i + batch_size]
-        
-        # 处理当前批次的文件
-        for file in batch_files:
-            if file.endswith(".wav"):
-                # 构造完整的文件路径
-                full_path = os.path.join(directory_path, file)
-                
-                try:
-                    # 调用推理管道
-                    inference_pipeline(
-                        full_path,
-                        output_dir=os.path.join(directory_path, "audio_npys"),
-                        granularity="utterance",
-                        extract_embedding=True
-                    )
-                except Exception as e:
-                    # 捕获异常并保存失败的文件名
-                    print(f"处理文件 {full_path} 时出现错误: {e}")
-                    failed_files.append(full_path)
-        
-        # 清理内存
-        torch.cuda.empty_cache()
 
-    # 输出处理失败的文件
-    if failed_files:
-        print("以下文件处理失败：")
-        for failed_file in failed_files:
-            print(failed_file+"正在重新处理 ...")
-            inference_pipeline = pipeline(
-                task=Tasks.emotion_recognition,
-                model="iic/emotion2vec_plus_large",
-                device = 'cpu')
-            rec_result = inference_pipeline(failed_file, 
-                                            output_dir=os.path.join(directory_path, "audio_npys"), granularity="utterance",
-                                            extract_embedding=True, disable_update=True)
-            print(failed_file+"处理完成")
-    else:
-        print("所有文件都处理成功。")
-
-#!/usr/bin/env python3
-import os
-import glob
-import numpy as np
-import librosa
-import opensmile
-import argparse
-from sklearn.preprocessing import StandardScaler
-
-#######################
-# 1. 特征提取部分
-#######################
 def process_audio_segment(audio, sr, start_time, end_time, n_mfcc=40):
     """
     提取音频片段，并提取 MFCC（40 维）与 eGeMAPS（88 维）特征，
@@ -232,18 +175,14 @@ def transform_and_save_features(feature_dir, mfcc_scaler, egemaps_scaler, n_mfcc
         np.save(file, features_norm)
         print(f"Normalized features saved to: {file}")
 
-#######################
-# 3. 主函数：选择提取或归一化
-#######################
 def main(args):
     
-    # 配置各数据集目录（请根据你的实际情况调整路径）
-    train_freeform_audio = "/home/b532root/data/b532zxy/AVEC15/train/Freeform/audio"
-    train_northwind_audio = "/home/b532root/data/b532zxy/AVEC15/train/Northwind/audio"
-    dev_freeform_audio = "/home/b532root/data/b532zxy/AVEC15/dev/Freeform/audio"
-    dev_northwind_audio = "/home/b532root/data/b532zxy/AVEC15/dev/Northwind/audio"
-    test_freeform_audio = "/home/b532root/data/b532zxy/AVEC15/test/Freeform/audio"
-    test_northwind_audio = "/home/b532root/data/b532zxy/AVEC15/test/Northwind/audio"
+    train_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_train/Freeform/audio"
+    train_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_train/Northwind/audio"
+    dev_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_dev/Freeform/audio"
+    dev_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_dev/Northwind/audio"
+    test_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_test/Freeform/audio"
+    test_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_test/Northwind/audio"
     
     if args.mode == "extract":
         # 对所有数据集进行特征提取

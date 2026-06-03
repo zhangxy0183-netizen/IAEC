@@ -13,37 +13,24 @@ from .audguide_att import BottomUpExtract
 class CAM(nn.Module):
     def __init__(self, args):
         super(CAM, self).__init__()
-        self.ff_video_attn = BottomUpExtract(128, 128)
-        self.nw_video_attn = BottomUpExtract(128, 128)
-
-        self.ff_coattn1 = DCNLayer(args.video_feature_dim, args.audio_feature_dim, 1, args.dropout)
-        self.ff_coattn2 = DCNLayer(args.video_feature_dim, args.audio_feature_dim, 1, args.dropout)
-        self.nw_coattn1 = DCNLayer(args.video_feature_dim, args.audio_feature_dim, 1, args.dropout)
-        self.nw_coattn2 = DCNLayer(args.video_feature_dim, args.audio_feature_dim, 1, args.dropout)
-
-        # 在LSTM中添加dropout
-        self.ff_Joint = LSTM(256, 128, 2, dropout=args.dropout, residual_embeddings=True)
-        self.nw_Joint = LSTM(256, 128, 2, dropout=args.dropout, residual_embeddings=True)
-
-        # 在注意力机制层添加dropout
-        self.ff_attention = nn.Sequential(
+        self.dataset = args.dataset
+        self.audio_attn = BottomUpExtract(args.video_feature_dim, args.audio_feature_dim)
+        if args.w_o_Video_Guide == 1:
+            self.video_attn = BottomUpExtract(args.audio_feature_dim, args.video_feature_dim)
+            self.coattn = DCNLayer(args.audio_feature_dim, args.video_feature_dim, 1, args.dropout)
+        else:
+            self.coattn = DCNLayer(args.video_feature_dim, args.video_feature_dim, 1, args.dropout)
+        self.Joint = LSTM(args.audio_feature_dim + args.video_feature_dim, 128, 2, dropout=args.dropout, residual_embeddings=True)
+        self.attention = nn.Sequential(
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.Tanh(),
-            nn.Dropout(args.dropout),  # 添加dropout
+            nn.Dropout(args.dropout),
             nn.Linear(64, 1)
         )
-        self.nw_attention = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.Tanh(),
-            nn.Dropout(args.dropout),  # 添加dropout
-            nn.Linear(64, 1)
-        )
-        
-        # 特征融合层保持不变，已经有dropout
+
         self.fusion_layer = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Linear(128, 128),
             nn.ReLU(),
             nn.Dropout(args.dropout),
             nn.Linear(128, 64),
@@ -53,51 +40,35 @@ class CAM(nn.Module):
             nn.LeakyReLU()
         )
         
-        # 添加一个额外的dropout层，用于在forward中的特征融合前使用
         self.feature_dropout = nn.Dropout(args.dropout)
+        self.w_o_Video_Guide = getattr(args, 'w_o_Video_Guide', 1)
+        self.w_o_fs = getattr(args, 'w_o_fs', 1)
 
+    def forward(self, a_features, v_features, mode = 'multimodal'):
+        guided_a_features = self.audio_attn(v_features, a_features)
+        if self.w_o_Video_Guide == 1:
+            guided_v_features = self.video_attn(a_features, v_features)
+            coed_v_features, coed_a_features = self.coattn(guided_v_features, guided_a_features)
+        else:
+            coed_v_features, coed_a_features = self.coattn(v_features, guided_a_features)
+        avfeatures = torch.cat((coed_v_features, coed_a_features), -1)
+        final_features = self.feature_dropout(self.Joint(avfeatures))
         
-
-
-    def forward(self, ffa_features, ffv_features, nwa_features, nwv_features):
-        ffv_features = self.ff_video_attn(ffv_features, ffa_features)
-        ffv_features, ffa_features = self.ff_coattn1(ffv_features, ffa_features)
-        ffv_features, ffa_features = self.ff_coattn2(ffa_features, ffv_features)
-        ff_avfeatures = torch.cat((ffv_features, ffa_features), -1)
-        spontaneous_features = self.ff_Joint(ff_avfeatures)
-        # 添加dropout
-        spontaneous_features = self.feature_dropout(spontaneous_features)
-
-        nwv_features = self.nw_video_attn(nwv_features, nwa_features)
-        nwv_features, nwa_features = self.nw_coattn1(nwv_features, nwa_features)
-        nwv_features, nwa_features = self.nw_coattn2(nwa_features, nwv_features)
-        nw_avfeatures = torch.cat((nwv_features, nwa_features), -1)
-        response_features = self.nw_Joint(nw_avfeatures)
-        # 添加dropout
-        response_features = self.feature_dropout(response_features)
-        
-        batch_size, num_frames, feature_dim = response_features.shape
+        batch_size, num_frames, feature_dim = final_features.shape
 
         # Step 1: 使用注意力机制计算帧权重
-        attention_weights_spontaneous = F.softmax(
-            self.ff_attention(spontaneous_features.view(-1, feature_dim)).view(batch_size, num_frames), dim=1
-        )  # (batch_size, num_frames)
+        if self.w_o_fs == 1:
+            attention_weights = F.softmax(
+                self.attention(final_features.view(-1, feature_dim)).view(batch_size, num_frames), dim=1
+            )  # (batch_size, num_frames)
+
+            final_features = torch.sum(
+                final_features * attention_weights.unsqueeze(-1), dim=1
+            )  # (batch_size, feature_dim)
+        else:
+            # 不使用帧级注意力
+            final_features = torch.mean(final_features, dim=1)  # (batch_size, feature_dim)
         
-        attention_weights_response = F.softmax(
-            self.nw_attention(response_features.view(-1, feature_dim)).view(batch_size, num_frames), dim=1
-        )  # (batch_size, num_frames)
-        
-        # Step 2: 加权求和得到每个样本的全局特征
-        weighted_spontaneous = torch.sum(
-            spontaneous_features * attention_weights_spontaneous.unsqueeze(-1), dim=1
-        )  # (batch_size, feature_dim)
-        
-        weighted_response = torch.sum(
-            response_features * attention_weights_response.unsqueeze(-1), dim=1
-        )  # (batch_size, feature_dim)
-        
-        # Step 3: 融合两种特征
-        fused_features = torch.cat([weighted_spontaneous, weighted_response], dim=-1)  # (batch_size, feature_dim * 2)
-        depression_score = self.fusion_layer(fused_features)  # (batch_size, 1)
+        depression_score = self.fusion_layer(final_features)  # (batch_size, 1)
         
         return depression_score

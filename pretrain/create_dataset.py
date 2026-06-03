@@ -108,8 +108,8 @@ def process_images_and_heatmaps(source_dir, target_image_dir, target_heatmap_dir
 
 def main():
     # 定义目标路径（不变）
-    target_image_dir = "/home/b532root/data/b532zxy/AVEC15/pretrain/images"
-    target_heatmap_dir = "/home/b532root/data/b532zxy/AVEC15/pretrain/heatmaps"
+    target_image_dir = "/home/b532root/data/b532zxy/AVEC2014/pretrain/images"
+    target_heatmap_dir = "/home/b532root/data/b532zxy/AVEC2014/pretrain/heatmaps"
 
     # 定义需要处理的 6 个文件夹及对应信息
     # 注意：这里的 output_csv 文件名后缀将以各自的目录名称附加（例如 test_Northwind.csv）
@@ -118,37 +118,37 @@ def main():
             "source_dir": "/home/b532root/data/b532zxy/AVEC2014/face/test/Northwind",
             "source_csv": "/home/b532root/data/b532zxy/AVEC2014/face/test/test_label.csv",
             "prefix": "Northwind",
-            "output_csv": "/home/b532root/data/b532zxy/AVEC15/pretrain/test.csv"
+            "output_csv": "/home/b532root/data/b532zxy/AVEC2014/pretrain/test.csv"
         },
         {
             "source_dir": "/home/b532root/data/b532zxy/AVEC2014/face/test/Freeform",
             "source_csv": "/home/b532root/data/b532zxy/AVEC2014/face/test/test_label.csv",
             "prefix": "Freeform",
-            "output_csv": "/home/b532root/data/b532zxy/AVEC15/pretrain/test.csv"
+            "output_csv": "/home/b532root/data/b532zxy/AVEC2014/pretrain/test.csv"
         },
         {
             "source_dir": "/home/b532root/data/b532zxy/AVEC2014/face/train/Northwind",
             "source_csv": "/home/b532root/data/b532zxy/AVEC2014/face/train/train_label.csv",
             "prefix": "Northwind",
-            "output_csv": "/home/b532root/data/b532zxy/AVEC15/pretrain/train.csv"
+            "output_csv": "/home/b532root/data/b532zxy/AVEC2014/pretrain/train.csv"
         },
         {
             "source_dir": "/home/b532root/data/b532zxy/AVEC2014/face/train/Freeform",
             "source_csv": "/home/b532root/data/b532zxy/AVEC2014/face/train/train_label.csv",
             "prefix": "Freeform",
-            "output_csv": "/home/b532root/data/b532zxy/AVEC15/pretrain/train.csv"
+            "output_csv": "/home/b532root/data/b532zxy/AVEC2014/pretrain/train.csv"
         },
         {
             "source_dir": "/home/b532root/data/b532zxy/AVEC2014/face/dev/Northwind",
             "source_csv": "/home/b532root/data/b532zxy/AVEC2014/face/dev/dev_label.csv",
             "prefix": "Northwind",
-            "output_csv": "/home/b532root/data/b532zxy/AVEC15/pretrain/dev.csv"
+            "output_csv": "/home/b532root/data/b532zxy/AVEC2014/pretrain/dev.csv"
         },
         {
             "source_dir": "/home/b532root/data/b532zxy/AVEC2014/face/dev/Freeform",
             "source_csv": "/home/b532root/data/b532zxy/AVEC2014/face/dev/dev_label.csv",
             "prefix": "Freeform",
-            "output_csv": "/home/b532root/data/b532zxy/AVEC15/pretrain/dev.csv"
+            "output_csv": "/home/b532root/data/b532zxy/AVEC2014/pretrain/dev.csv"
         }
     ]
 

@@ -1,9 +1,9 @@
 import pandas as pd
 
 # 1. 定义三个 CSV 文件的路径
-train_csv = "/home/b532root/data/b532zxy/AVEC15/train/train_label.csv"
-dev_csv   = "/home/b532root/data/b532zxy/AVEC15/dev/dev_label.csv"
-test_csv  = "/home/b532root/data/b532zxy/AVEC15/test/test_label.csv"
+train_csv = "/home/b532root/data/b532zxy/AVEC2014/train/train_label.csv"
+dev_csv   = "/home/b532root/data/b532zxy/AVEC2014/dev/dev_label.csv"
+test_csv  = "/home/b532root/data/b532zxy/AVEC2014/test/test_label.csv"
 
 # 2. 读取 CSV 文件，将所有 file 列合并到一个列表中
 csv_paths = [train_csv, dev_csv, test_csv]
@@ -36,6 +36,6 @@ for f in all_files:
 
 # 6. 将结果保存为 CSV 文件
 result_df = pd.DataFrame(result)
-result_df.to_csv("/home/b532root/data/b532zxy/AVEC15/file_identity.csv", index=False)
+result_df.to_csv("/home/b532root/data/b532zxy/AVEC2014/file_identity.csv", index=False)
 
 print("已生成 file_identity.csv，其中每个 file 对应的 identity 已映射完成。")

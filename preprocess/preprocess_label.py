@@ -6,9 +6,9 @@ from tqdm import tqdm
 import torch
 import sys
 sys.path.append('./')
-from Depression_k.tools.utils import load_config
-from Depression_k.trash.extra_feats import splitface2eye_nose_mouth
-config = load_config('/home/b532root/account/b532zxy/workspace/Depression_k/config.yaml')
+from Depression_all.tools.utils import load_config
+from Depression_all.trash.extra_feats import splitface2eye_nose_mouth
+config = load_config('/home/b532root/account/b532zxy/workspace/Depression_all/config.yaml')
 root_folder = config['dataset']['path']
 lable_path = config['dataset']['lable_path']
 processed_path = config['dataset']['processed_path']
@@ -37,7 +37,7 @@ def generate_label_file():
     loader = tqdm(file_list)
     for file in loader:
         label = pd.read_csv(os.path.join(base_url, file), header=None)
-        labels.append([file[:file.find('_Depression_k.csv')], label.iloc[0, 0]])  # 使用 iloc 读取标签值
+        labels.append([file[:file.find('_Depression_all.csv')], label.iloc[0, 0]])  # 使用 iloc 读取标签值
         loader.set_description('file:{}'.format(file))
     
     # 提取文件名和标签
@@ -59,9 +59,9 @@ def generate_label_file():
 if __name__ == '__main__':
     # 12345实现从总label中提取train、test、dev的标签 改第一步的三个文件夹就行
     # 1. 设置文件夹路径和标签文件路径
-    mp4_folder_path = "/home/b532root/data/b532zxy/database/AVEC15/dev/Northwind/"  # MP4文件所在文件夹
-    label_file_path = "/home/b532root/data/b532zxy/database/AVEC15/label.csv"   # label.csv文件路径
-    output_file_path = "/home/b532root/data/b532zxy/database/AVEC15/dev/dev_label.csv"  # 输出结果的csv文件路径
+    mp4_folder_path = "/home/b532root/data/b532zxy/database/AVEC2014/dev/Northwind/"  # MP4文件所在文件夹
+    label_file_path = "/home/b532root/data/b532zxy/database/AVEC2014/label.csv"   # label.csv文件路径
+    output_file_path = "/home/b532root/data/b532zxy/database/AVEC2014/dev/dev_label.csv"  # 输出结果的csv文件路径
     # 2. 获取所有MP4文件的前五个字符
     mp4_files = [f[:5] for f in os.listdir(mp4_folder_path) if f.endswith('.mp4')]
     # 3. 读取label.csv文件

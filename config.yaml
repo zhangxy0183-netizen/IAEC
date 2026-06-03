@@ -1,38 +1,71 @@
-dataset:
-  av_path: "/home/b532root/data/b532zxy/AVEC15/kfold"
-  kfold_label_path: "/home/b532root/data/b532zxy/AVEC15/kfold_label.csv"
+dataset: "AVEC2014"
+# dataset: "AVEC2017"
+# dataset: "AVEC2019"
 
-  train_data_path: "/home/b532root/data/b532zxy/AVEC15/train"
-  train_label_path: "/home/b532root/data/b532zxy/AVEC15/train/train_label.csv"
+# train:
+w_o_ID: "1"
+w_o_SE: "1"
+w_o_SIM: "1"
+w_o_Video_Guide: "1"
+w_o_fs: "1"
+audio_feature_type: "audio_npy"
 
-  dev_data_path: "/home/b532root/data/b532zxy/AVEC15/dev"
-  dev_label_path: "/home/b532root/data/b532zxy/AVEC15/dev/dev_label.csv"
-
-  test_data_path: "/home/b532root/data/b532zxy/AVEC15/test"
-  test_label_path: "/home/b532root/data/b532zxy/AVEC15/test/test_label.csv"
+# test:
+stage: 2
+mode: "multimodal"
+AVEC2014:
+  train_path: "/home/b532root/data/b532zxy/AVEC2014/train"
+  dev_path: "/home/b532root/data/b532zxy/AVEC2014/dev"
+  test_path: "/home/b532root/data/b532zxy/AVEC2014/test"
+AVEC2017:
+  base_root: "/home/b532root/data/b532zxy/AVEC2017"
+  train_path: "/home/b532root/data/b532zxy/AVEC2017/train_label.csv"
+  test_path: "/home/b532root/data/b532zxy/AVEC2017/test_label.csv"
+  dev_path: "/home/b532root/data/b532zxy/AVEC2017/dev_label.csv"
+AVEC2019:
+  base_root: "/home/b532root/data/b532zxy/AVEC2019"
+  train_path: "/home/b532root/data/b532zxy/AVEC2019/train_label.csv"
+  test_path: "/home/b532root/data/b532zxy/AVEC2019/test_label.csv"
+  dev_path: "/home/b532root/data/b532zxy/AVEC2019/dev_label.csv"
 
 w_all_model:
-  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/w_all_best_mask.pth"
-  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/w_all_best_fea.pth"
-  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/w_all_best_cam.pth"
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC2014/result/w_all_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC2014/result/w_all_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC2014/result/w_all_best_cam.pth"
 
 wo_sim_model:
-  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_sim_best_mask.pth"
-  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_sim_best_fea.pth"
-  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_sim_best_cam.pth"
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_sim_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_sim_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_sim_best_cam.pth"
 
 wo_se_model:
-  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_se_best_mask.pth"
-  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_se_best_fea.pth"
-  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_se_best_cam.pth"
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_se_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_se_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_se_best_cam.pth"
 
 wo_id_model:
-  best_emonet_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_id_best_mask.pth"
-  best_feature_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_id_best_fea.pth"
-  best_cam_path: "/home/b532root/data/b532zxy/AVEC15/result/wo_id_best_cam.pth"
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_id_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_id_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_id_best_cam.pth"
 
+wo_video_guide:
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_video_guide_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_video_guide_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC2014/result/wo_video_guide_best_cam.pth"
+  
 pretrain:
-  train_csv_path: "/home/b532root/data/b532zxy/AVEC15/pretrain/train.csv"
-  val_csv_path: "/home/b532root/data/b532zxy/AVEC15/pretrain/dev.csv"
-  test_csv_path: "/home/b532root/data/b532zxy/AVEC15/pretrain/test.csv"
-  file_identity_path: "/home/b532root/data/b532zxy/AVEC15/file_identity.csv"
+  train_csv_path: "/home/b532root/data/b532zxy/AVEC2014/pretrain/train.csv"
+  val_csv_path: "/home/b532root/data/b532zxy/AVEC2014/pretrain/dev.csv"
+  test_csv_path: "/home/b532root/data/b532zxy/AVEC2014/pretrain/train.csv"
+  file_identity_path: "/home/b532root/data/b532zxy/AVEC2014/file_identity.csv"
+
+dataset_2017:
+  data_path: "/home/b532root/data/b532zxy/AVEC2017"
+  train_label_path: "/home/b532root/data/b532zxy/AVEC2017/train_label.csv"
+  dev_label_path: "/home/b532root/data/b532zxy/AVEC2017/dev_label.csv"
+  test_label_path: "/home/b532root/data/b532zxy/AVEC2017/test_label.csv"
+
+w_all_model_2017:
+  best_emonet_path: "/home/b532root/data/b532zxy/AVEC2017/result/w_all_best_mask.pth"
+  best_feature_path: "/home/b532root/data/b532zxy/AVEC2017/result/w_all_best_fea.pth"
+  best_cam_path: "/home/b532root/data/b532zxy/AVEC2017/result/w_all_best_cam.pth"

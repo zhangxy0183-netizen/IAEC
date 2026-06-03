@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+
 class DenseCoAttn(nn.Module):
     def __init__(self, dim1, dim2, dropout):
         super(DenseCoAttn, self).__init__()

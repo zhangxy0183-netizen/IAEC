@@ -6,57 +6,229 @@ import os
 import torch.nn.functional as F
 import csv
 import matplotlib.pyplot as plt
+from skimage import transform
 
 def load_config(config_file):
     with open(config_file, 'r') as f:
         config = yaml.safe_load(f)
     return config
-
+import sys
+sys.path.append('/home/b532root/account/b532zxy/workspace')
 from torch.utils.data import DataLoader
-from validate import validate_cam, validate_fea
-from Depression_k.dataloader import AudioVideoDataset
-from Depression_k.model.main_model import DModel
-from Depression_k.model.CAM import CAM
-config = load_config('/home/b532root/account/b532zxy/workspace/Depression_k/config.yaml')
+from Depression_all.dataloader import AudioVideoDataset
+from Depression_all.dataloader_2017 import AVEC2017AudioVideoDataset
+from Depression_all.model.main_model import DModel
+from Depression_all.model.CAM import CAM
+config = load_config('/home/b532root/account/b532zxy/workspace/Depression_all/config.yaml')
 
-def run_test(args):
-    print("----------------------------------------------begin_test--------------------------------------------------")
-    args.test_data_path = config['dataset']['test_data_path']
-    args.test_label_path = config['dataset']['test_label_path']
-    args.best_emonet_path = config[args.test_mode]['best_emonet_path']
-    args.best_feature_path = config[args.test_mode]['best_feature_path']
-    args.best_cam_path = config[args.test_mode]['best_cam_path']
+def validate_fea(args, model, test_loader, device, criterion, mode='dev'):
+    """
+    统一计算测试/验证阶段的指标和保存每个样本信息。
+    
+    Args:
+        args: 参数对象，包含 log_var_ff、log_var_nw 等属性（在 with_alignment=True 时会用到）。
+        model: 网络模型。
+        test_loader: 数据加载器。
+        device: 设备（如 cuda）。
+        criterion: 损失函数。
+        with_alignment (bool): 是否计算额外的情感对齐损失。
+            True 表示同时计算 ff_emotionAlignmentLoss 和 nw_emotionAlignmentLoss，
+            False 表示仅计算回归损失。
+    
+    Returns:
+        rmse, mae, loss_all, val_epoch_info
+    """
+    model.eval()
+    val_epoch_info = []  # 保存每个样本的信息
 
+    with torch.no_grad():
+        rmse, mae, loss_all = 0.0, 0.0, 0.0
+        step = 0
+        for data in test_loader:
+            # 将各输入数据转移到指定设备
+            ff_video_features = data['video_features'].cuda(device)
+            ff_audio_features = data['audio_features'].cuda(device)
+            labels = data['label'].cuda(device).to(torch.float32).view(-1, 1)
+            dir_name = data['dir_name']
+
+            results = model(ff_video_features, ff_audio_features, mode='dev')
+            outputs = results[0]
+            loss_regression = criterion(outputs, labels)
+            
+            if mode == 'dev':
+                ff_emotionAlignmentLoss = results[3]
+                loss = (loss_regression +
+                        torch.exp(-args.log_var) * ff_emotionAlignmentLoss + args.log_var)
+            elif mode == 'test':
+                loss = loss_regression
+            else:
+                raise ValueError(f"mode '{mode}' not supported")
+
+            loss_all += loss.item()
+            predicted = outputs.view(-1).cpu().numpy()
+            true_labels = labels.view(-1).cpu().numpy()
+            for i in range(len(predicted)):
+                val_epoch_info.append({
+                    'dir_name': dir_name[i],
+                    'predicted': predicted[i],
+                    'label': true_labels[i]
+                })
+            # 计算均方根误差和平均绝对误差
+            rmse += torch.sqrt(torch.pow(torch.abs(outputs - labels), 2).mean()).item()
+            mae += torch.abs(outputs - labels).mean().item()
+            step += 1
+
+        rmse /= step
+        mae /= step
+        loss_all /= step
+
+    return rmse, mae, loss_all, val_epoch_info
+
+def validate_cam(args, feature_model, CAM_model, test_loader, device, criterion):
+    """
+    对模型进行验证。
+
+    参数：
+    model: 神经网络模型。
+    test_loader: 验证数据加载器。
+    device: 计算设备（如'cuda'或'cpu'）。
+    criterion: 用于计算损失的函数。
+
+    返回：
+    rmse: 均方根误差。
+    mae: 平均绝对误差。
+    loss_all: 平均损失。
+    """
+    # 在不计算梯度的情况下进行验证，以减少内存消耗
+    feature_model.eval()
+    CAM_model.eval()  # Set model to evaluation mode
+    val_epoch_info = []  # 记录每个样本的信息
+
+    with torch.no_grad():
+        # 初始化误差和损失变量
+        rmse, mae, loss_all = 0., 0., 0.
+        # 初始化步数变量，用于计算平均误差和损失
+        step = 0
+        # 遍历测试加载器中的每个样本
+        for data in test_loader:
+            # 从数据中解包各个组成部分
+            video_features = data['video_features'].cuda(device)
+            audio_features = data['audio_features'].cuda(device)
+            labels = data['label'].cuda(device).to(torch.float32).view(-1, 1)   
+            dir_name = data['dir_name'] 
+
+            ffv_features, ffa_features = feature_model(video_features, audio_features, mode='pretrain') 
+            # outputs = outputs.view(-1, 1)
+            if args.mode == 'video':
+                ffa_features = torch.zeros_like(ffa_features).cuda(device)
+            elif args.mode == 'audio':
+                ffv_features = torch.zeros_like(ffv_features).cuda(device)
+            final_output = CAM_model(ffa_features, ffv_features)
+            loss_regression = criterion(final_output, labels)
+            loss = loss_regression
+            loss_all += loss.item()
+
+            final_output = final_output.to(args.device)
+            final_output = final_output.view(-1, 1)
+            predicted = final_output.view(-1).detach().cpu().numpy()
+            true_labels = labels.view(-1).cpu().numpy()
+
+            for i, sample_loss in enumerate(predicted):
+                val_epoch_info.append({
+                    'dir_name': dir_name[i],
+                    'predicted': predicted[i],
+                    'label': true_labels[i]
+                })
+
+            rmse += torch.sqrt(torch.pow(torch.abs(final_output - labels), 2).mean()).item()
+            mae += torch.abs(final_output - labels).mean().item()
+            step += 1
+        
+        rmse /= step
+        mae /= step
+        loss_all /= step
+    return rmse, mae, loss_all, val_epoch_info
+
+def get_best_cam_path(args):
+    """根据test_mode动态生成best_cam_path"""
+    base_dir = os.path.join("/home/b532root/data/b532zxy", args.dataset, "result")
+    
+    # 定义test_mode到权重文件名的映射关系
+    test_mode_mapping = {
+        'w_all': "weights_cam_ID_1_SE_1_SIM_1_VIDEO_1.pth",
+        'w_o_ID': "weights_cam_ID_0_SE_1_SIM_1_VIDEO_1.pth",
+        'w_o_SE': "weights_cam_ID_1_SE_0_SIM_1_VIDEO_1.pth",
+        'w_o_SIM': "weights_cam_ID_1_SE_1_SIM_0_VIDEO_1.pth",
+        'w_o_Video_Guide': "weights_cam_ID_1_SE_1_SIM_1_VIDEO_0.pth",
+        'w_o_fs': "weights_cam_ID_1_SE_1_SIM_1_VIDEO_1_fs_0.pth"
+    }
+    
+    # 根据当前test_mode获取对应的权重文件名
+    if args.test_mode in test_mode_mapping:
+        weights_file = test_mode_mapping[args.test_mode]
+        return os.path.join(base_dir, weights_file)
+    else:
+        raise ValueError(f"Invalid test_mode: {args.test_mode}. Must be one of {list(test_mode_mapping.keys())}")
+
+
+def model_test(args):
+    args.w_o_ID = 1
+    args.w_o_SE = 1
+    args.w_o_SIM = 1
+    args.w_o_Video_Guide = 1
+    args.w_o_fs = 1
+
+    if args.test_mode == 'w_all':
+        pass
+    elif args.test_mode == 'w_o_ID':
+        args.w_o_ID = 0
+    elif args.test_mode == 'w_o_SE':
+        args.w_o_SE = 0
+    elif args.test_mode == 'w_o_SIM':
+        args.w_o_SIM = 0
+    elif args.test_mode == 'w_o_Video_Guide':
+        args.w_o_Video_Guide = 0
+    elif args.test_mode == 'w_o_fs':
+        args.w_o_fs = 0
+
+    args.best_emonet_path = '/home/b532root/data/b532zxy/'+args.dataset+'/result/weights_mask_ID_'+str(args.w_o_ID)+'_SE_'+str(args.w_o_SE)+'.pth'
+    args.best_feature_path = '/home/b532root/data/b532zxy/'+args.dataset+'/result/weights_feature_ID_'+str(args.w_o_ID)+'_SE_'+str(args.w_o_SE)+'_SIM_'+str(args.w_o_SIM)+'.pth'
+    args.best_cam_path = get_best_cam_path(args)
+    args.print_if = False
     os.makedirs(args.log_dir, exist_ok=True)
 
     # 加载模型
     feature_model = DModel(args).cuda(args.device)
     checkpoint_file = args.best_feature_path
 
-    if args.mode == "cam":
-        print("执行cam————test", end="\t")
+    if args.stage == 2:
+        print(f"执行cam————{args.test_mode}", end="\t")
         cam_model = CAM(args).cuda(args.device)
         checkpoint_file = args.best_cam_path
-    else:
-        print("执行fea————test", end="\t")
+    elif args.stage == 1:
+        print(f"执行fea————{args.test_mode}", end="\t")
 
     if os.path.exists(checkpoint_file): 
-        print(f"检测到 best_{args.mode} 模型......")
-        checkpoint = torch.load(checkpoint_file)
-        if args.mode == "fea":
+        # print(f"检测到 best_{args.mode} 模型......")
+        checkpoint = torch.load(checkpoint_file, weights_only=True)
+        if args.stage == 1:
             feature_model.load_state_dict(checkpoint['model_state_dict'])
-        elif args.mode == "cam":
+        elif args.stage == 2:
             feature_model.load_state_dict(checkpoint['feature_model_state_dict'])
             cam_model.load_state_dict(checkpoint['CAM_model_state_dict'])
             cam_model.eval()
         feature_model.eval()
 
-    dataset_test = AudioVideoDataset(
-        av_path=args.test_data_path,
-        label_path=args.test_label_path,
-        num_frames=args.frame_num,
-        mode='test'
-    )
+    if args.dataset == 'AVEC2014':
+        dataset_test = AudioVideoDataset(root_dir=args.test_path, audio_noise_std=args.eval_audio_noise,
+                                         visual_occlusion_ratio=args.eval_video_occlusion, 
+                                         visual_occlusion_mode=args.eval_video_mode, audio_feature_type = args.audio_feature_type)
+    else:
+        dataset_test = AVEC2017AudioVideoDataset(base_root=args.base_root, label_csv=args.test_path,
+                                                 eval_audio_noise_level=args.eval_audio_noise,
+                                                 eval_occlusion_ratio=args.eval_video_occlusion,
+                                                 eval_occlusion_mode=args.eval_video_mode, mode='test')
+    
     test_loader = DataLoader(
         dataset=dataset_test,
         batch_size=args.batch_size,
@@ -66,19 +238,126 @@ def run_test(args):
     )
     criterion_regression = nn.HuberLoss(delta=7.0)
 
-    if args.mode == "fea":
+    if args.stage == 1:
         test_rmse, test_mae, test_loss, test_epoch_info = validate_fea(
             args, feature_model, test_loader, args.device, criterion_regression, mode='test')
-    else:
+    elif args.stage == 2:
         test_rmse, test_mae, test_loss, test_epoch_info = validate_cam(
             args, feature_model, cam_model, test_loader, args.device, criterion_regression)
-
-    save_epoch_info(test_epoch_info, args.log_dir, phase=f"{args.test_mode}_{args.mode}", print_if = False)
-
-    print(f"Test RMSE: {test_rmse:.4f}", end="\t")
+    save_epoch_info(test_epoch_info, args.log_dir, phase=f"{args.dataset}_{args.test_mode}_{args.mode}", print_if = False)
+    print(f"{args.dataset}_{args.test_mode}_{args.mode}", end="\t")
     print(f"Test MAE: {test_mae:.4f}", end="\t")
+    print(f"Test RMSE: {test_rmse:.4f}", end="\t")
     print(f"Test Loss: {test_loss:.4f}")
-    print("----------------------------------------------end_test--------------------------------------------------")
+    print("------------------------------------------------------------------------------------------------")
+
+
+def stage_test(args):
+    args.w_o_ID = 1
+    args.w_o_SE = 1
+    args.w_o_SIM = 1
+    args.w_o_Video_Guide = 1
+    
+    if args.test_mode == 'w_all':
+        pass
+    elif args.test_mode == 'w_o_ID':
+        args.w_o_ID = 0
+    elif args.test_mode == 'w_o_SE':
+        args.w_o_SE = 0
+    elif args.test_mode == 'w_o_SIM':
+        args.w_o_SIM = 0
+    elif args.test_mode == 'w_o_Video_Guide':
+        args.w_o_Video_Guide = 0
+
+    args.best_emonet_path = '/home/b532root/data/b532zxy/'+args.dataset+'/result/weights_mask_ID_'+str(args.w_o_ID)+'_SE_'+str(args.w_o_SE)+'.pth'
+    args.best_feature_path = '/home/b532root/data/b532zxy/'+args.dataset+'/result/weights_feature_ID_'+str(args.w_o_ID)+'_SE_'+str(args.w_o_SE)+'_SIM_'+str(args.w_o_SIM)+'.pth'
+    args.best_cam_path = get_best_cam_path(args)
+    args.print_if = False
+    os.makedirs(args.log_dir, exist_ok=True)
+
+    # 加载模型
+    feature_model = DModel(args).cuda(args.device)
+    cam_model = CAM(args).cuda(args.device)
+    checkpoint_file = args.best_cam_path
+
+    if os.path.exists(checkpoint_file): 
+        # print(f"检测到 best_{args.mode} 模型......")
+        checkpoint = torch.load(checkpoint_file, weights_only=True)
+        feature_model.load_state_dict(checkpoint['feature_model_state_dict'])
+        cam_model.load_state_dict(checkpoint['CAM_model_state_dict'])
+        cam_model.eval()
+        feature_model.eval()
+
+    if args.dataset == 'AVEC2014':
+        dataset_test = AudioVideoDataset(root_dir=args.test_path)
+    else:
+        dataset_test = AVEC2017AudioVideoDataset(base_root=args.base_root, label_csv=args.test_path, mode='test')
+    test_loader = DataLoader(
+        dataset=dataset_test,
+        batch_size=args.batch_size,
+        shuffle=False,
+        pin_memory=True,
+        drop_last=False
+    )
+    criterion_regression = nn.HuberLoss(delta=7.0)
+
+    test_rmse, test_mae, test_loss, test_epoch_info = validate_cam(
+            args, feature_model, cam_model, test_loader, args.device, criterion_regression)
+
+    save_epoch_info(test_epoch_info, args.log_dir, phase=f"{args.dataset}_{args.test_mode}_{args.mode}", print_if = False)
+    print(f"{args.dataset}_{args.test_mode}_{args.mode}", end="\t")
+    print(f"Test MAE: {test_mae:.4f}", end="\t")
+    print(f"Test RMSE: {test_rmse:.4f}", end="\t")
+    print(f"Test Loss: {test_loss:.4f}")
+    print("------------------------------------------------------------------------------------------------")
+
+
+def pretrain_validate(model, test_loader, args):
+    model.eval()
+    total_loss = 0.
+    step = 0
+    val_epoch_info = []
+
+    with torch.no_grad():
+        for images, heatmaps, labels, identity in test_loader:
+            images = images.cuda(args.device)
+            heatmaps = heatmaps.cuda(args.device)
+            labels = labels.cuda(args.device).view(-1, 1)
+            heatmaps = heatmaps / heatmaps.max()
+            identity = identity.cuda(args.device).view(-1)
+            
+            # 前向传播，得到 heatmap 和特征向量以及身份预测（id_logits）
+            mask, final_features, id_logits, regression_output = model(images)
+            mask = mask.squeeze(dim=1)
+
+            # 计算损失
+            loss = total_losses(args, args.epoch, id_logits=id_logits, target_id=identity, mask=mask, heatmaps_ground_truth=heatmaps,
+                                regression_output = regression_output, labels=labels)
+            total_loss += loss.item()
+            step += 1
+
+            # 将 id_logits 转换为预测身份（假设是分类问题）
+            # 如果 id_logits 是多分类的 logits，则可以用 argmax 获取预测的类别
+            predicted_identity = torch.argmax(id_logits, dim=1)
+            # 若模型是回归或输出单一数值，则可以直接记录 id_logits 的值
+            # predicted_identity = id_logits.view(-1)
+            regression_output = regression_output.view(-1, 1)
+            predicted = regression_output.view(-1).detach().cpu().numpy()
+            true_labels = labels.view(-1).detach().cpu().numpy()
+            for i, sample in enumerate(predicted):
+                val_epoch_info.append({
+                    'predicted': predicted[i],
+                    'label': true_labels[i],
+                })
+
+        loss_all = total_loss / step
+
+    # 保存热力图叠加效果（已写好的函数）
+    save_overlay_images(images, mask, identity.view(-1,1), id_logits.view(-1, 1), save_dir=args.heatmap, epoch=args.epoch, mode="predicted")
+    save_overlay_images(images, heatmaps, identity.view(-1,1), id_logits.view(-1, 1), save_dir=args.heatmap, epoch=0, mode="true")
+
+    return loss_all, val_epoch_info
+
 
 class AdaptiveWingLoss(nn.Module):
     def __init__(self, alpha=1.5, omega=7, epsilon=0.1, theta=0.05):
@@ -104,12 +383,12 @@ def total_losses(args, epoch, id_logits, target_id, mask, heatmaps_ground_truth,
     loss_mask = AdaptiveWingLoss()(mask, heatmaps_ground_truth)
     loss_id = nn.CrossEntropyLoss()(id_logits, target_id)
     loss_regression = nn.HuberLoss(delta=7.0)(regression_output, labels)
-    # print(loss_mask, 0.02 * loss_id, 0.002 * loss_regression)
+    # print(loss_mask, loss_id, loss_regression)
     # 注意：此处的loss_id在反向传播时由于GRL作用，对特征提取器起反向效果
-    if args.w_o_ID == 1:
+    if args.w_o_ID == 0:
         loss_id = 0 
 
-    return loss_mask + 0.1 * loss_id + 0.01 * loss_regression
+    return loss_mask + 0.05 * loss_id + 0.002 * loss_regression
 
 
 
@@ -251,7 +530,7 @@ def save_true_heatmap_overlay(image_tensor, true_heatmap_tensor, save_path, epoc
             # 保存叠加图像，文件名包含 "true_" 前缀以区分
             plt.savefig(os.path.join(save_path, f"epoch_{epoch}_batch_{i}_frame_{j}_true.png"))
             plt.close()
-from skimage import transform
+
 
 def save_overlay_images(images, heatmaps, labels, predictions, save_dir, epoch, mode="predicted"):
     os.makedirs(save_dir, exist_ok=True)

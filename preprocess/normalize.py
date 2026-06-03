@@ -157,9 +157,9 @@ def compute_split_stats(av_path, split_indices, num_frames=15, select_frames=15)
 # -------------------------------
 if __name__ == '__main__':
     # 数据集路径（请确保路径正确）
-    train_data_path = '/home/b532root/data/b532zxy/AVEC15/train'
-    dev_data_path   = '/home/b532root/data/b532zxy/AVEC15/dev'
-    test_data_path  = '/home/b532root/data/b532zxy/AVEC15/test'
+    train_data_path = '/home/b532root/data/b532zxy/AVEC2014_base/base_train'
+    dev_data_path   = '/home/b532root/data/b532zxy/AVEC2014_base/base_dev'
+    test_data_path  = '/home/b532root/data/b532zxy/AVEC2014_base/base_test'
     
     # -------------------------------
     # 针对 Train 数据集
@@ -193,7 +193,7 @@ if __name__ == '__main__':
 
 
 # ========== Train 数据集统计 ==========
-# 在 /home/b532root/data/b532zxy/AVEC15/train 中共选取 46 个 Freeform 样本，46 个 Northwind 样本。
+# 在 /home/b532root/data/b532zxy/AVEC2014/train 中共选取 46 个 Freeform 样本，46 个 Northwind 样本。
 # ----- 视频帧统计 -----
 # Freeform 视频均值 (R,G,B): tensor([0.4513, 0.3201, 0.3194])
 # Freeform 视频标准差: tensor([0.2726, 0.2528, 0.2840])
@@ -207,7 +207,7 @@ if __name__ == '__main__':
 # Northwind 音频标准差: 1.0071423
 
 # ========== Dev 数据集统计 ==========
-# 在 /home/b532root/data/b532zxy/AVEC15/dev 中共选取 41 个 Freeform 样本，41 个 Northwind 样本。
+# 在 /home/b532root/data/b532zxy/AVEC2014/dev 中共选取 41 个 Freeform 样本，41 个 Northwind 样本。
 # ----- 视频帧统计 -----
 # Freeform 视频均值 (R,G,B): tensor([0.4362, 0.3039, 0.3068])
 # Freeform 视频标准差: tensor([0.2815, 0.2492, 0.2829])
@@ -221,7 +221,7 @@ if __name__ == '__main__':
 # Northwind 音频标准差: 0.98393005
 
 # ========== Test 数据集统计 ==========
-# 在 /home/b532root/data/b532zxy/AVEC15/test 中共选取 46 个 Freeform 样本，46 个 Northwind 样本。
+# 在 /home/b532root/data/b532zxy/AVEC2014/test 中共选取 46 个 Freeform 样本，46 个 Northwind 样本。
 # ----- 视频帧统计 -----
 # Freeform 视频均值 (R,G,B): tensor([0.4591, 0.3344, 0.3263])
 # Freeform 视频标准差: tensor([0.2739, 0.2449, 0.2750])
