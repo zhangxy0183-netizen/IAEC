@@ -56,19 +56,17 @@ class CAM(nn.Module):
         
         batch_size, num_frames, feature_dim = final_features.shape
 
-        # Step 1: 使用注意力机制计算帧权重
         if self.w_o_fs == 1:
             attention_weights = F.softmax(
                 self.attention(final_features.view(-1, feature_dim)).view(batch_size, num_frames), dim=1
-            )  # (batch_size, num_frames)
+            )
 
             final_features = torch.sum(
                 final_features * attention_weights.unsqueeze(-1), dim=1
-            )  # (batch_size, feature_dim)
+            )
         else:
-            # 不使用帧级注意力
-            final_features = torch.mean(final_features, dim=1)  # (batch_size, feature_dim)
+            final_features = torch.mean(final_features, dim=1)
         
-        depression_score = self.fusion_layer(final_features)  # (batch_size, 1)
+        depression_score = self.fusion_layer(final_features)
         
         return depression_score

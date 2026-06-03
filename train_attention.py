@@ -111,28 +111,10 @@ def main(args):
     else:
         dataset_train = AudioVideoDataset2(base_root=args.base_root, label_csv=args.train_path, mode='train')
         dataset_dev = AudioVideoDataset2(base_root=args.base_root, label_csv=args.dev_path, mode='dev')
-    labels_train = [dataset_train[i]['label'].item() for i in range(len(dataset_train))]
-    
-    # # ------------------ 重采样代码 ------------------
-    # # 针对标签大于20的样本赋予更高采样概率
-    # num_samples_above_20 = sum(1 for l in labels_train if l >= 20)
-    # num_samples_below_or_equal_20 = len(labels_train) - num_samples_above_20
-    # # 避免除以零
-    # if num_samples_above_20 == 0:
-    #     num_samples_above_20 = 1
-    # if num_samples_below_or_equal_20 == 0:
-    #     num_samples_below_or_equal_20 = 1
-    # weights = [1.0 / num_samples_above_20 if l >= 20 else 1.0 / num_samples_below_or_equal_20 for l in labels_train]
-    # sampler = WeightedRandomSampler(weights, num_samples=len(dataset_train), replacement=True)
-    # --------------------------------------------------
-
-    # 使用 WeightedRandomSampler 替换原来的 shuffle=True
-    # train_loader = DataLoader(dataset=dataset_train, batch_size=args.batch_size, sampler=sampler, pin_memory=True, drop_last=False)
 
     train_loader = DataLoader(dataset=dataset_train, batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False)
     dev_loader = DataLoader(dataset=dataset_dev, batch_size=args.batch_size, shuffle=False, pin_memory=True, drop_last=False)
     
-    # args.num_id_classes = dataset_train.num_id_classes  # 从数据集获取身份类别数量
     train(train_loader, dev_loader, args)
 
 def train(train_loader, test_loader, args):
@@ -148,7 +130,6 @@ def train(train_loader, test_loader, args):
     CAM_model = CAM(args).cuda(args.device)
     print("加载已有权重......", end="")
 
-    # ===================== 断点续训 =====================
     checkpoint_file = os.path.join(args.save_path, "checkpoint.pth")
     best_file = os.path.join(args.best_model_path, "best.pth")
     start_epoch = 0
@@ -198,7 +179,6 @@ def train(train_loader, test_loader, args):
             lr=args.lr,
             weight_decay=args.weight_decay
         ) 
-    # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer_e, mode='min', factor=0.8, patience=10, verbose=True)
     scheduler = CosineAnnealingWarmRestarts(optimizer_e, T_0=10, T_mult=2, eta_min=5e-5)    
 
     print("\t\t初始化优化器完成√")
@@ -211,7 +191,6 @@ def train(train_loader, test_loader, args):
         print("\t\t早停机制启动失败×")
 
     criterion = nn.HuberLoss(delta=7.0)
-    # criterion = nn.MSELoss()
 
     print("------------------begin training------------------")
     with open(args.training_log, "a") as f_log, open(args.best_log, "a") as f_best:
@@ -248,7 +227,6 @@ def train(train_loader, test_loader, args):
                 loss = loss_regression
 
                 loss.backward()
-                # torch.nn.utils.clip_grad_norm_(CAM_model.parameters(), max_norm=5.0)
                 optimizer_e.step()
 
                 final_output = output.to(args.device)

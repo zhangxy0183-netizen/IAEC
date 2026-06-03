@@ -1,13 +1,9 @@
 import numpy as np
 import os
-import torch
 import librosa
-from modelscope.pipelines import pipeline
-from modelscope.utils.constant import Tasks
 import opensmile
 import sys
 sys.path.append('/home/b532root/account/b532zxy/workspace')
-from Depression_all.tools.utils import load_config
 #!/usr/bin/env python3
 import os
 import glob
@@ -23,13 +19,14 @@ def get_files(path):
     for r, d, f in file_info:
         file_list += f
     return file_list
+
 def get_dirs(path):
     file_info = os.walk(path)
     dirs = []
     for d, r, f in file_info:
         dirs.append(d)
     return dirs[1:]
-# 从视频中提取音频的函数
+
 def convert_video_to_wav(root_dir):
     # 遍历所有子目录
     for subdir, dirs, files in os.walk(root_dir):
@@ -48,51 +45,36 @@ def convert_video_to_wav(root_dir):
                 print(f"Extracted audio from {video_path} to {audio_output_path}")
 
 def process_audio_segment(audio, sr, start_time, end_time, n_mfcc=40):
-    """
-    提取音频片段，并提取 MFCC（40 维）与 eGeMAPS（88 维）特征，
-    最后直接拼接成 128 维向量返回。
-    """
     # 提取音频片段
     start_sample = int(start_time * sr)
     end_sample = int(end_time * sr)
     segment = audio[start_sample:end_sample]
 
-    # 如果片段太短（不足 0.5 秒），进行零填充
     min_length = int(sr * 0.5)
     if len(segment) < min_length:
         segment = np.pad(segment, (0, min_length - len(segment)), mode='constant')
 
-    # 若全为静音，则返回全零向量
     if np.max(np.abs(segment)) < 1e-5:
         return np.zeros(n_mfcc + 88)
 
-    # 提取 MFCC 特征，取均值后 shape: (n_mfcc,)
     mfcc_features = librosa.feature.mfcc(y=segment, sr=sr, n_mfcc=n_mfcc)
     mfcc_mean = np.mean(mfcc_features, axis=1)
 
-    # 提取 eGeMAPS 特征（opensmile 返回的是 DataFrame，取第一行的值）
     smile = opensmile.Smile(
         feature_set=opensmile.FeatureSet.eGeMAPSv02,
         feature_level=opensmile.FeatureLevel.Functionals
     )
     egemaps_features = smile.process_signal(segment, sampling_rate=sr).values[0]
-
-    # 拼接两个部分
     combined_features = np.concatenate((mfcc_mean, egemaps_features))
     return combined_features
 
 def extract_features_and_save(audio_path, num_segments=15, n_mfcc=40):
-    """
-    对单个音频文件提取特征，并将 (num_segments,128) 的矩阵保存为 npy 文件，
-    存放在音频文件所在目录下的 "frame_15" 文件夹中。
-    """
     base_dir = os.path.dirname(audio_path)
     audio_filename = os.path.splitext(os.path.basename(audio_path))[0]
     save_dir = os.path.join(base_dir, "frame_15")
     os.makedirs(save_dir, exist_ok=True)
     feature_save_path = os.path.join(save_dir, f"{audio_filename}.npy")
     
-    # 加载音频文件
     audio, sr = librosa.load(audio_path, sr=None)
     duration = librosa.get_duration(y=audio, sr=sr)
     
@@ -112,9 +94,6 @@ def extract_features_and_save(audio_path, num_segments=15, n_mfcc=40):
     print(f"Features saved to {feature_save_path}")
     return feature_matrix
 
-#######################
-# 2. 归一化部分
-#######################
 def load_all_features(feature_dir, file_pattern="*.npy"):
     """
     遍历指定目录下所有 npy 文件，将每个文件的 (num_segments, 128) 数据拼接成 (total_segments, 128)。
@@ -184,9 +163,7 @@ def main(args):
     test_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_test/Freeform/audio"
     test_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_test/Northwind/audio"
     
-    if args.mode == "extract":
-        # 对所有数据集进行特征提取
-        
+    if args.mode == "extract":        
         directories = [train_freeform_audio, train_northwind_audio,
                        dev_freeform_audio, dev_northwind_audio,
                        test_freeform_audio, test_northwind_audio]
@@ -197,13 +174,11 @@ def main(args):
                     extract_features_and_save(filepath, num_segments=args.num_segments, n_mfcc=args.n_mfcc)
                     
     elif args.mode == "normalize":
-        # 归一化阶段：只使用训练集的 npy 数据计算 scaler
         train_freeform_npy = os.path.join(train_freeform_audio, "frame_15")
         train_northwind_npy = os.path.join(train_northwind_audio, "frame_15")
         training_dirs = [train_freeform_npy, train_northwind_npy]
         mfcc_scaler, egemaps_scaler = compute_scalers(training_dirs, n_mfcc=args.n_mfcc)
         
-        # 对各数据集的 npy 文件归一化
         dataset_dirs = {
             "train_Freeform": os.path.join(train_freeform_audio, "frame_15"),
             "train_Northwind": os.path.join(train_northwind_audio, "frame_15"),

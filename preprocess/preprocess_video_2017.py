@@ -47,16 +47,10 @@ def read_pose_txt(path, num_frames):
         return np.zeros((num_frames, 6), dtype=np.float32)
 
 def make_landmark_heatmap(coords, H=64, W=64, sigma=5.0, normalize=True):
-    """
-    coords: (68,2) array of x,y coordinates; may contain NaN
-    returns: (H,W) single-channel heatmap
-    """
-    # drop any invalid points
     coords = np.nan_to_num(coords, nan=-1.0)
     coords = coords[~(coords[:,0] < 0) & ~(coords[:,1] < 0)]
     if coords.size == 0:
         return np.zeros((H, W), dtype=np.float32)
-    # clip to valid range
     coords = np.clip(coords, 0, 224)
     xs = coords[:,0] / 224 * (W-1)
     ys = coords[:,1] / 224 * (H-1)
@@ -103,7 +97,6 @@ def process_all_sessions(input_root, output_root, start_id=300, frames_per_clip=
             continue
         idxs = np.linspace(0, total_frames-1, frames_per_clip, dtype=int)
 
-        # find and sort landmark columns
         kp_cols = [c for c in df_clnf.columns if re.match(r'^[xX]_?\d+$', c) or re.match(r'^[yY]_?\d+$', c)]
         def sort_key(c):
             num = int(re.findall(r'\d+', c)[0])

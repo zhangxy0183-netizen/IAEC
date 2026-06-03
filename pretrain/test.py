@@ -32,7 +32,6 @@ parser.add_argument('--weight_decay', default=1e-4, type=float, help='权重衰�
 parser.add_argument('--best_l', default=1000, type=float, help='初始损失')
 parser.add_argument('--w_o_ID', default=w_o_ID, type=int, help='1 contain / 0 not contain')
 parser.add_argument('--w_o_SE', default=w_o_SE, type=int, help='1 contain / 0 not contain')
-# 新增超参数：标签一致性损失的权重
 parser.add_argument('--lambda_consistency', default=0.1, type=float, help='标签一致性损失权重')
 
 args = parser.parse_args()
@@ -62,8 +61,6 @@ with torch.no_grad():
         labels = labels.cuda(args.device).view(-1, 1)
         identity = identity.cuda(args.device).view(-1)
         heatmaps = heatmaps / heatmaps.max()
-
-        # 前向传播，得到 heatmap 和特征向量
         mask, _, _, _ = model(images)
         mask = mask.squeeze(dim=1)
         step += 1

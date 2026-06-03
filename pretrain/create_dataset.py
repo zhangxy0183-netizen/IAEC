@@ -44,18 +44,6 @@ def pick_arithmetic_sequence(file_list, k=15):
     return chosen
 
 def process_images_and_heatmaps(source_dir, target_image_dir, target_heatmap_dir, prefix, label_dict):
-    """
-    处理图片和热力图文件，重命名并分类存储，同时返回对应的 [image_path, heatmap_path, label] 列表。
-    
-    参数：
-      source_dir: 原始文件夹路径（如 Freeform 或 Northwind）。
-      target_image_dir: 存储所有图片的目标路径。
-      target_heatmap_dir: 存储所有热力图的目标路径。
-      prefix: 用于区分 Freeform 和 Northwind 的前缀，比如 "Freeform" 或 "Northwind"。
-      label_dict: 由 build_label_dict() 返回的字典，用于根据文件名查找标签。
-    返回：
-      rows: 一个列表，每个元素都是 [new_image_path, new_heatmap_path, label]
-    """
     os.makedirs(target_image_dir, exist_ok=True)
     os.makedirs(target_heatmap_dir, exist_ok=True)
     

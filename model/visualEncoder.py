@@ -4,27 +4,18 @@ from Depression_all.model.emonet import EmoNet
 
 class VisualFeatureExtractor(nn.Module):
     def __init__(self, best_emonet_path=None, dropout=0.1, output_dim=128, freeze_layers=None, print_if=True):
-        """
-            best_emonet_path (str): 预训练权重路径。
-            dropout (float): Dropout 概率。
-            output_dim (int): 输出特征维度。
-            freeze_layers (list of str): 需要冻结的层名称列表。
-        """
         super(VisualFeatureExtractor, self).__init__()
         self.features = EmoNet(n_expression=output_dim)
         self.dropout_layer = nn.Dropout(dropout)
 
-        # 加载预训练权重
         if best_emonet_path:
             checkpoint = torch.load(best_emonet_path, map_location="cpu", weights_only=True)
             state_dict = checkpoint['YYJC']
-            # print("visualEncoder---冻结hourGlass......")
             if print_if is True:
                 print("加载emonet权重......", end="")
             self.features.load_state_dict(state_dict, strict=False)
             if print_if is True:
                 print("\t\t加载emonet权重完成√")
-            # 加载预训练权重之后，先冻结整个模型
             for param in self.features.parameters():
                 param.requires_grad = False
 

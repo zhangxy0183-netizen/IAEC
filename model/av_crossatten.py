@@ -35,7 +35,6 @@ class DCNLayer(nn.Module):
         self.dcn_layers = nn.ModuleList([NormalSubLayer(dim1, dim2, dropout) for _ in range(num)])
 
     def forward(self, data1, data2):
-        # data1:video，data2:audio
         for dense_coattn in self.dcn_layers:
             data1, data2 = dense_coattn(data1, data2)
 

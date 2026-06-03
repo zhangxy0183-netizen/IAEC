@@ -23,7 +23,6 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = str(1)
 TORCH_USE_CUDA_DSA = 1
 warnings.filterwarnings("ignore")
 
-# 读取配置文件
 config = load_config('/home/b532root/account/b532zxy/workspace/Depression_all/config.yaml')
 dataset = config['dataset']
 train_csv_path = config['pretrain']['train_csv_path']
@@ -34,7 +33,6 @@ w_o_ID = config['w_o_ID']
 w_o_SE = config['w_o_SE']
 current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# 定义超参数及参数解析器
 parser = argparse.ArgumentParser(description='Trainer for Multimodal Model')
 parser.add_argument('--train_csv_path', default=train_csv_path, type=str, help='train_csv_path')
 parser.add_argument('--val_csv_path', default=val_csv_path, type=str, help='val_csv_path')
@@ -89,18 +87,14 @@ def main(args):
     train(train_loader, val_loader, test_loader, args)
 
 def train(train_loader, val_loader, test_loader, args):
-    # 初始化最佳验证损失为一个较大的值
     best_l = args.best_l
     train_losses, val_losses = [], []
-
-    # 初始化模型并将其移动到指定的设备上
     model = EmoNet(n_expression=128, grl_lambda=args.grl_lambda, w_o_SE = args.w_o_SE, dropout_rate = args.dropout_rate).cuda(args.device)
 
     best_file = os.path.join(args.save_path, "mask.pth")
     start_epoch = 0
     if os.path.exists(best_file):
         checkpoint = torch.load(best_file)
-        # 判断检查点是否为最后一轮保存的（假设总训练轮次为 args.epochs）
         state_dict = checkpoint['YYJC']
         model.load_state_dict(state_dict)
         start_epoch = checkpoint['epoch'] + 1

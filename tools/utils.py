@@ -22,24 +22,8 @@ from Depression_all.model.CAM import CAM
 config = load_config('/home/b532root/account/b532zxy/workspace/Depression_all/config.yaml')
 
 def validate_fea(args, model, test_loader, device, criterion, mode='dev'):
-    """
-    统一计算测试/验证阶段的指标和保存每个样本信息。
-    
-    Args:
-        args: 参数对象，包含 log_var_ff、log_var_nw 等属性（在 with_alignment=True 时会用到）。
-        model: 网络模型。
-        test_loader: 数据加载器。
-        device: 设备（如 cuda）。
-        criterion: 损失函数。
-        with_alignment (bool): 是否计算额外的情感对齐损失。
-            True 表示同时计算 ff_emotionAlignmentLoss 和 nw_emotionAlignmentLoss，
-            False 表示仅计算回归损失。
-    
-    Returns:
-        rmse, mae, loss_all, val_epoch_info
-    """
     model.eval()
-    val_epoch_info = []  # 保存每个样本的信息
+    val_epoch_info = []
 
     with torch.no_grad():
         rmse, mae, loss_all = 0.0, 0.0, 0.0
@@ -85,40 +69,20 @@ def validate_fea(args, model, test_loader, device, criterion, mode='dev'):
     return rmse, mae, loss_all, val_epoch_info
 
 def validate_cam(args, feature_model, CAM_model, test_loader, device, criterion):
-    """
-    对模型进行验证。
-
-    参数：
-    model: 神经网络模型。
-    test_loader: 验证数据加载器。
-    device: 计算设备（如'cuda'或'cpu'）。
-    criterion: 用于计算损失的函数。
-
-    返回：
-    rmse: 均方根误差。
-    mae: 平均绝对误差。
-    loss_all: 平均损失。
-    """
-    # 在不计算梯度的情况下进行验证，以减少内存消耗
     feature_model.eval()
     CAM_model.eval()  # Set model to evaluation mode
-    val_epoch_info = []  # 记录每个样本的信息
+    val_epoch_info = []
 
     with torch.no_grad():
-        # 初始化误差和损失变量
         rmse, mae, loss_all = 0., 0., 0.
-        # 初始化步数变量，用于计算平均误差和损失
         step = 0
-        # 遍历测试加载器中的每个样本
         for data in test_loader:
-            # 从数据中解包各个组成部分
             video_features = data['video_features'].cuda(device)
             audio_features = data['audio_features'].cuda(device)
             labels = data['label'].cuda(device).to(torch.float32).view(-1, 1)   
             dir_name = data['dir_name'] 
 
             ffv_features, ffa_features = feature_model(video_features, audio_features, mode='pretrain') 
-            # outputs = outputs.view(-1, 1)
             if args.mode == 'video':
                 ffa_features = torch.zeros_like(ffa_features).cuda(device)
             elif args.mode == 'audio':
@@ -150,10 +114,8 @@ def validate_cam(args, feature_model, CAM_model, test_loader, device, criterion)
     return rmse, mae, loss_all, val_epoch_info
 
 def get_best_cam_path(args):
-    """根据test_mode动态生成best_cam_path"""
     base_dir = os.path.join("/home/b532root/data/b532zxy", args.dataset, "result")
     
-    # 定义test_mode到权重文件名的映射关系
     test_mode_mapping = {
         'w_all': "weights_cam_ID_1_SE_1_SIM_1_VIDEO_1.pth",
         'w_o_ID': "weights_cam_ID_0_SE_1_SIM_1_VIDEO_1.pth",
@@ -163,7 +125,6 @@ def get_best_cam_path(args):
         'w_o_fs': "weights_cam_ID_1_SE_1_SIM_1_VIDEO_1_fs_0.pth"
     }
     
-    # 根据当前test_mode获取对应的权重文件名
     if args.test_mode in test_mode_mapping:
         weights_file = test_mode_mapping[args.test_mode]
         return os.path.join(base_dir, weights_file)
@@ -197,7 +158,6 @@ def model_test(args):
     args.print_if = False
     os.makedirs(args.log_dir, exist_ok=True)
 
-    # 加载模型
     feature_model = DModel(args).cuda(args.device)
     checkpoint_file = args.best_feature_path
 
@@ -209,7 +169,6 @@ def model_test(args):
         print(f"执行fea————{args.test_mode}", end="\t")
 
     if os.path.exists(checkpoint_file): 
-        # print(f"检测到 best_{args.mode} 模型......")
         checkpoint = torch.load(checkpoint_file, weights_only=True)
         if args.stage == 1:
             feature_model.load_state_dict(checkpoint['model_state_dict'])
@@ -275,13 +234,11 @@ def stage_test(args):
     args.print_if = False
     os.makedirs(args.log_dir, exist_ok=True)
 
-    # 加载模型
     feature_model = DModel(args).cuda(args.device)
     cam_model = CAM(args).cuda(args.device)
     checkpoint_file = args.best_cam_path
 
     if os.path.exists(checkpoint_file): 
-        # print(f"检测到 best_{args.mode} 模型......")
         checkpoint = torch.load(checkpoint_file, weights_only=True)
         feature_model.load_state_dict(checkpoint['feature_model_state_dict'])
         cam_model.load_state_dict(checkpoint['CAM_model_state_dict'])
@@ -326,21 +283,13 @@ def pretrain_validate(model, test_loader, args):
             heatmaps = heatmaps / heatmaps.max()
             identity = identity.cuda(args.device).view(-1)
             
-            # 前向传播，得到 heatmap 和特征向量以及身份预测（id_logits）
             mask, final_features, id_logits, regression_output = model(images)
             mask = mask.squeeze(dim=1)
 
-            # 计算损失
             loss = total_losses(args, args.epoch, id_logits=id_logits, target_id=identity, mask=mask, heatmaps_ground_truth=heatmaps,
                                 regression_output = regression_output, labels=labels)
             total_loss += loss.item()
             step += 1
-
-            # 将 id_logits 转换为预测身份（假设是分类问题）
-            # 如果 id_logits 是多分类的 logits，则可以用 argmax 获取预测的类别
-            predicted_identity = torch.argmax(id_logits, dim=1)
-            # 若模型是回归或输出单一数值，则可以直接记录 id_logits 的值
-            # predicted_identity = id_logits.view(-1)
             regression_output = regression_output.view(-1, 1)
             predicted = regression_output.view(-1).detach().cpu().numpy()
             true_labels = labels.view(-1).detach().cpu().numpy()
@@ -352,7 +301,6 @@ def pretrain_validate(model, test_loader, args):
 
         loss_all = total_loss / step
 
-    # 保存热力图叠加效果（已写好的函数）
     save_overlay_images(images, mask, identity.view(-1,1), id_logits.view(-1, 1), save_dir=args.heatmap, epoch=args.epoch, mode="predicted")
     save_overlay_images(images, heatmaps, identity.view(-1,1), id_logits.view(-1, 1), save_dir=args.heatmap, epoch=0, mode="true")
 
@@ -368,12 +316,7 @@ class AdaptiveWingLoss(nn.Module):
         self.theta = theta
 
     def forward(self, pred, target):
-        # print(pred.shape)
-        # print(target.shape)
-        # 计算误差
         delta = torch.abs(target - pred)
-        
-        # 根据误差与 theta 的比较来选择合适的公式
         loss = torch.where(delta < self.theta,
                            self.omega * torch.log(1 + (delta / self.epsilon) ** self.alpha),
                            self.omega * (delta - self.theta))
@@ -383,8 +326,6 @@ def total_losses(args, epoch, id_logits, target_id, mask, heatmaps_ground_truth,
     loss_mask = AdaptiveWingLoss()(mask, heatmaps_ground_truth)
     loss_id = nn.CrossEntropyLoss()(id_logits, target_id)
     loss_regression = nn.HuberLoss(delta=7.0)(regression_output, labels)
-    # print(loss_mask, loss_id, loss_regression)
-    # 注意：此处的loss_id在反向传播时由于GRL作用，对特征提取器起反向效果
     if args.w_o_ID == 0:
         loss_id = 0 
 
@@ -393,15 +334,6 @@ def total_losses(args, epoch, id_logits, target_id, mask, heatmaps_ground_truth,
 
 
 def save_epoch_info(sample_info, log_dir, phase, epoch=None, print_if = True):
-    """
-    保存每个样本的信息到 CSV 文件。
-    
-    Args:
-        sample_info (list of dict): 每个样本的信息，包含 dir_name、predicted、label、lr。
-        log_dir (str): 保存日志的目录。
-        phase (str): 阶段（'train' 或 'val'）。
-        epoch (int, optional): 当前训练轮次。如果为 None，则生成不包含 epoch 信息的文件名。
-    """
     os.makedirs(log_dir, exist_ok=True)
     if epoch is None:
         file_path = os.path.join(log_dir, f'{phase}_info.csv')
@@ -417,18 +349,9 @@ def save_epoch_info(sample_info, log_dir, phase, epoch=None, print_if = True):
 
 
 def apply_mask_and_save(images, masks, save_path="./visualized_images/"):
-    """
-    使用 `mask` 增强原始图像，并将其输入模型，同时保存中间结果。
-
-    Args:
-        images (torch.Tensor): 原始输入图像，形状为 [batch_size, num_frames, 3, H, W]。
-        masks (torch.Tensor): 生成的 `mask`，形状为 [batch_size, num_frames, 1, h, w]。
-        save_path (str): 保存可视化结果的路径。
-    """
     batch_size, num_frames, C, H, W = images.shape
     _, _, _, h, w = masks.shape
 
-    # 调整 mask 大小
     masks_resized = F.interpolate(masks.view(-1, 1, h, w), size=(H, W), mode="bilinear", align_corners=False)
     masks_resized = masks_resized.view(batch_size, num_frames, 1, H, W)
 
@@ -444,14 +367,6 @@ def apply_mask_and_save(images, masks, save_path="./visualized_images/"):
     return torch.tensor(np.stack(enhanced_images).transpose(0, 3, 1, 2)).float()
 
 def save_enhanced_images(images, enhanced_images, save_path="./enhanced_images/"):
-    """
-    保存原始图像和增强后的图像。
-
-    Args:
-        images (torch.Tensor): 原始图像，形状为 [batch_size, num_frames, 3, H, W]。
-        enhanced_images (torch.Tensor): 增强后的图像，形状为 [batch_size, num_frames, 3, H, W]。
-        save_path (str): 保存路径。
-    """
     os.makedirs(save_path, exist_ok=True)
 
     batch_size, num_frames, _, _, _ = images.shape
@@ -466,13 +381,6 @@ def save_enhanced_images(images, enhanced_images, save_path="./enhanced_images/"
             plt.imsave(enhanced_path, np.clip(enhanced_images[b, t], 0, 1))
 
 def save_heatmap_overlay(image_tensor, heatmap_tensor, save_path, epoch):
-    """
-    将预测的热力图叠加到原始图像上并保存。
-    :param image_tensor: 输入的图像 Tensor, shape: (B, num_frames, C, H, W)
-    :param heatmap_tensor: 预测的热力图 Tensor, shape: (B, num_frames, H_heatmap, W_heatmap)
-    :param save_path: 保存路径
-    :param epoch: 当前训练的轮次
-    """
     os.makedirs(save_path, exist_ok=True)
     batch_size, num_frames, _, img_h, img_w = image_tensor.size()
     
@@ -499,13 +407,6 @@ def save_heatmap_overlay(image_tensor, heatmap_tensor, save_path, epoch):
             plt.close()
 
 def save_true_heatmap_overlay(image_tensor, true_heatmap_tensor, save_path, epoch):
-    """
-    将真实的热力图叠加到原始图像上并保存。
-    :param image_tensor: 输入的图像 Tensor, shape: (B, num_frames, C, H, W)
-    :param true_heatmap_tensor: 真实的热力图 Tensor, shape: (B, num_frames, H_heatmap, W_heatmap)
-    :param save_path: 保存路径
-    :param epoch: 当前训练的轮次
-    """
     os.makedirs(save_path, exist_ok=True)
     batch_size, num_frames, _, img_h, img_w = image_tensor.size()
     
@@ -542,26 +443,13 @@ def save_overlay_images(images, heatmaps, labels, predictions, save_dir, epoch, 
         heatmap = heatmaps[idx].cpu().detach().numpy()  # (64, 64)
         heatmap_resized = transform.resize(heatmap, (256, 256), anti_aliasing=True)  # 缩放到 (256, 256)
 
-        label = labels[idx].item()  # 获取对应的标签
-        if predictions is not None:
-            prediction = predictions[idx].item()  # 获取模型的预测标签
-
         plt.figure(figsize=(6, 6))
         plt.imshow(image)  # 原图
         plt.imshow(heatmap_resized, cmap='jet', alpha=0.5)  # 叠加热力图
         plt.axis("off")
-        # 在图片上添加标签和预测值
-        # plt.text(10, 20, f"Label: {label}", color="white", fontsize=12, bbox=dict(facecolor="black", alpha=0.5))
-        # 需要显示预测值，打开下面代码
-        # plt.text(10, 40, f"Prediction: {prediction}", color="white", fontsize=12, bbox=dict(facecolor="black", alpha=0.5))
-
         plt.savefig(os.path.join(save_dir, f"{mode}_epoch_{epoch}_idx_{idx}.png"))
         plt.close()
 
-
-
-
-# 检查GPU是否可用
 def check_gpu():
     if torch.cuda.is_available():
         print("GPU可用！")
@@ -576,8 +464,6 @@ def check_gpu():
         print(f"当前GPU3: {torch.cuda.get_device_name(3)}")
     else:
         print("GPU不可用，将使用CPU进行计算。")
-
-
 
 class EarlyStopping:
     def __init__(self, patience=10, verbose=False):
@@ -599,9 +485,5 @@ class EarlyStopping:
         else:
             self.best_loss = val_loss
             self.counter = 0
-
-
-if __name__ == "__main__":
-    check_gpu()  # 检查gpu是否可用
 
     

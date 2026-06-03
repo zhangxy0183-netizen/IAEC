@@ -2,7 +2,6 @@ import argparse
 import sys
 sys.path.append('/home/b532root/account/b532zxy/workspace')
 from Depression_all.model.main_model import DModel
-# from Depression_all.model.feature_model import DModel
 from Depression_all.tools.utils import EarlyStopping, load_config, save_epoch_info, validate_fea
 from Depression_all.dataloader import AudioVideoDataset
 from Depression_all.dataloader_2017 import AVEC2017AudioVideoDataset as AudioVideoDataset2
@@ -37,7 +36,6 @@ w_o_Video_Guide = config['w_o_Video_Guide']
 audio_feature_type = config['audio_feature_type']
 current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# 定义超参数
 parser = argparse.ArgumentParser(description='Trainer for Multimodal Model')
 parser.add_argument('--dataset', default=dataset, help="选择数据集类型")
 parser.add_argument('--train_path', default=train_path, type=str, help='train标签路径')
@@ -77,7 +75,6 @@ parser.add_argument('--CA_num_heads', default=8, type=int, help='融合模块的
 parser.add_argument('--CA_num_layers', default=2, type=int, help='可学习的注意力模块的层数')
 parser.add_argument('--y_min', default=0, type=int, help='')
 parser.add_argument('--y_max', default=41, type=int, help='')
-# parser.add_argument('--reduced_dim', default=64, type=int, help='降维')
 parser.add_argument('--dropout', default=0.4, type=float, help='dropout')
 parser.add_argument('--w_o_ID', default=w_o_ID, type=int, help='1 contain / 0 not contain')
 parser.add_argument('--w_o_SE', default=w_o_SE, type=int, help='1 contain / 0 not contain')
@@ -111,12 +108,9 @@ def main(args):
         dataset_dev = AudioVideoDataset2(base_root=args.base_root, label_csv=args.dev_path, mode='dev')
     labels_train = [dataset_train[i]['label'].item() for i in range(len(dataset_train))]
 
-    # ------------------ 重采样代码 ------------------
-    # 针对标签大于20的样本赋予更高采样概率
     if args.dataset == 'AVEC2014':
         num_samples_above_20 = sum(1 for l in labels_train if l >=20)
         num_samples_below_or_equal_20 = len(labels_train) - num_samples_above_20
-        # 避免除以零
         if num_samples_above_20 == 0:
             num_samples_above_20 = 1
         if num_samples_below_or_equal_20 == 0:
@@ -128,7 +122,6 @@ def main(args):
         train_loader = DataLoader(dataset=dataset_train, batch_size=args.batch_size, shuffle=True, pin_memory=True, drop_last=False)
     dev_loader = DataLoader(dataset=dataset_dev, batch_size=args.batch_size, shuffle=False, pin_memory=True, drop_last=False)
     
-    # args.num_id_classes = dataset_train.num_id_classes  # 从数据集获取身份类别数量
     train(train_loader, dev_loader, args)
 
 
@@ -138,14 +131,12 @@ def train(train_loader, test_loader, args):
     
     print("加载已有权重......", end="")
 
-    # ===================== 断点续训 =====================
     checkpoint_file = os.path.join(args.save_path, "checkpoint.pth")
     best_file = os.path.join(args.best_model_path, "best.pth")
     start_epoch = 0
 
     if os.path.exists(checkpoint_file):
         checkpoint = torch.load(checkpoint_file)
-        # 判断检查点是否为最后一轮保存的（假设总训练轮次为 args.epochs）
         if checkpoint['epoch'] < args.epochs - 1:
             start_epoch = checkpoint['epoch'] + 1
             model.load_state_dict(checkpoint['model_state_dict'])
@@ -216,9 +207,6 @@ def train(train_loader, test_loader, args):
                 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-                # for name, param in model.named_parameters():
-                #     if param.grad is not None:
-                #         print(f"Layer: {name}, Gradient Sum: {param.grad.sum().item()}")
 
                 optimizer_e.step()
                 

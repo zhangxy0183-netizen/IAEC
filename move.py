@@ -3,11 +3,6 @@ import shutil
 
 
 def safe_move(src, dst):
-    """
-    安全移动文件：
-    1. 源文件不存在：跳过，不报错
-    2. 目标文件已存在：先删除旧文件
-    """
     if not os.path.exists(src):
         print(f"Skipped: {src} does not exist")
         return
@@ -23,10 +18,6 @@ def safe_move(src, dst):
 
 
 def safe_delete(path):
-    """
-    安全删除文件：
-    文件不存在也不报错
-    """
     if os.path.exists(path):
         os.remove(path)
         print(f"Deleted: {path}")

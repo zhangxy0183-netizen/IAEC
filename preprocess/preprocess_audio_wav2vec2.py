@@ -17,11 +17,6 @@ import opensmile
 import argparse
 from sklearn.preprocessing import StandardScaler
 
-# config = load_config('/home/b532root/account/b532zxy/workspace/Dmine_Kfold/config.yaml')
-# root_folder = config['dataset']['path']
-# label_path = config['dataset']['all_label_path']
-# processed_path = config['dataset']['processed_path']
-
 def get_files(path):
     file_info = os.walk(path)
     file_list = []
@@ -72,19 +67,13 @@ def extract_wav2vec2(audio, sr, start_time, end_time):
     input_values = inputs.input_values.to(device)
     with torch.no_grad():
         outputs = wav2vec2_model(input_values)
-
-        # last_hidden_state: (batch, time, 768)
         hidden_states = outputs.last_hidden_state
-
-        # 对时间维度做平均池化
-        # pooled_feature: (batch, 768)
         pooled_feature = hidden_states.mean(dim=1)
 
     segment_feature = pooled_feature.squeeze(0).cpu().numpy()
     return segment_feature
 
 def process_audio_segment(audio_path, num_segments=15):
-    # 1. 根据路径判断 train / dev / test
     if "base_train" in audio_path or "/train/" in audio_path:
         split_name = "train"
     elif "base_dev" in audio_path or "/dev/" in audio_path:
@@ -94,7 +83,6 @@ def process_audio_segment(audio_path, num_segments=15):
     else:
         raise ValueError(f"无法从路径中判断 train/dev/test: {audio_path}")
 
-    # 2. 判断是 Freeform 还是 Northwind
     if "Freeform" in audio_path:
         task_name = "Freeform"
     elif "Northwind" in audio_path:
@@ -102,7 +90,6 @@ def process_audio_segment(audio_path, num_segments=15):
     else:
         raise ValueError(f"无法从路径中判断 Freeform/Northwind: {audio_path}")
 
-    # 3. 构造保存目录
     save_dir = os.path.join(
         "/home/b532root/data/b532zxy/AVEC2014",
         split_name,
@@ -110,19 +97,17 @@ def process_audio_segment(audio_path, num_segments=15):
     )
     os.makedirs(save_dir, exist_ok=True)
 
-    # 4. 构造保存文件名
     audio_filename = os.path.splitext(os.path.basename(audio_path))[0]
     parts = audio_filename.split("_")
     sample_id = "_".join(parts[:2])
     save_filename = f"{task_name}_{sample_id}.npy"
     feature_save_path = os.path.join(save_dir, save_filename)
     
-    # 加载音频文件
     audio, sr = librosa.load(audio_path, sr=None)
     duration = librosa.get_duration(y=audio, sr=sr)
     
     segment_length = duration / num_segments
-    step_size = segment_length / 4  # 25% 重叠
+    step_size = segment_length / 4
 
     features = []
     for i in range(num_segments):
@@ -139,15 +124,12 @@ def process_audio_segment(audio_path, num_segments=15):
 
 def main(args):
     
-    # 配置各数据集目录（请根据你的实际情况调整路径）
     train_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_train/Freeform/"
     train_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_train/Northwind/"
     dev_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_dev/Freeform/"
     dev_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_dev/Northwind/"
     test_freeform_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_test/Freeform/"
     test_northwind_audio = "/home/b532root/data/b532zxy/AVEC2014_base/base_test/Northwind/"
-
-    # 对所有数据集进行特征提取
     
     directories = [train_freeform_audio, train_northwind_audio,
                    dev_freeform_audio, dev_northwind_audio,

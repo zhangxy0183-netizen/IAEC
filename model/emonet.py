@@ -19,7 +19,6 @@ class GradientReversalLayer(nn.Module):
     def forward(self, x):
         return GradientReversalFunction.apply(x, self.lambda_)
 
-# Squeeze-and-Excitation模块
 class SEModule(nn.Module):
     def __init__(self, channels, reduction=16):
         super(SEModule, self).__init__()
@@ -37,11 +36,9 @@ class SEModule(nn.Module):
         y = self.fc(y).view(b, c, 1, 1)
         return x * y
 
-# 3x3卷积
 def conv3x3(in_planes, out_planes, stride=1, padding=1, bias=False):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=padding, bias=bias)
 
-# ConvBlock模块
 class ConvBlock(nn.Module):
     def __init__(self, in_planes, out_planes, w_o_SE):
         super(ConvBlock, self).__init__()
@@ -86,11 +83,10 @@ class ConvBlock(nn.Module):
 
         out3 += residual
         if self.w_o_SE == 1:
-            out3 = self.se(out3)  # 应用SE模块
+            out3 = self.se(out3)
 
         return out3
 
-# HourGlass模块
 class HourGlass(nn.Module):
     def __init__(self, num_modules, depth, num_features, w_o_SE):
         super(HourGlass, self).__init__()
@@ -134,7 +130,6 @@ class HourGlass(nn.Module):
     def forward(self, x):
         return self._forward(self.depth, x)
 
-# EmoNet模型
 class EmoNet(nn.Module):
     def __init__(self, num_modules=1, n_expression=128, n_blocks=1, 
                     attention=True, num_identities=77, grl_lambda=0.5, w_o_SE = 1, dropout_rate=0.3):
@@ -144,7 +139,6 @@ class EmoNet(nn.Module):
         self.attention = attention
         self.dropout_rate = dropout_rate
         self.dropout = nn.Dropout(dropout_rate)
-        # 前置卷积层及ConvBlock模块（和原有代码一致）
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
         self.bn1 = nn.InstanceNorm2d(64)
         self.conv2 = ConvBlock(64, 128, w_o_SE)
@@ -171,8 +165,7 @@ class EmoNet(nn.Module):
             self.emo_convs.append(ConvBlock(in_f, out_f, w_o_SE))
             self.emo_convs.append(nn.MaxPool2d(2, 2))
         self.emo_net_2 = nn.Sequential(*self.emo_convs)
-        self.avg_pool_2 = nn.AdaptiveAvgPool2d(1)  # 自适应池化到 (1, 1)
-        # 修改情感特征提取部分，添加dropout
+        self.avg_pool_2 = nn.AdaptiveAvgPool2d(1)
         self.emo_fc_2 = nn.Sequential(
             nn.Linear(256, 128),
             nn.BatchNorm1d(128),
@@ -181,10 +174,8 @@ class EmoNet(nn.Module):
             nn.Linear(128, n_expression)
         )
 
-        # 时序建模（LSTM）
         self.lstm = nn.LSTM(n_expression, n_expression // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.grl = GradientReversalLayer()
-        # 修改身份判别分支，添加dropout
         self.identity_classifier = nn.Sequential(
             nn.Linear(n_expression, 256),
             nn.ReLU(inplace=True),
@@ -198,7 +189,6 @@ class EmoNet(nn.Module):
             nn.Linear(128, num_identities)
         )
 
-        # 修改抑郁回归分支，添加dropout
         self.depression_regression = nn.Sequential(
             nn.Linear(n_expression, 256),
             nn.ReLU(inplace=True),
@@ -213,7 +203,6 @@ class EmoNet(nn.Module):
         )
     
     def forward(self, x):
-        # 特征提取前几层
         x = F.relu(self.bn1(self.conv1(x)), True)
         x = F.max_pool2d(self.conv2(x), 2, stride=2)
         x = self.conv3(x)
@@ -236,7 +225,7 @@ class EmoNet(nn.Module):
 
         if self.attention:
             mask = torch.sum(tmp_out, dim=1, keepdim=True)
-            mask = torch.sigmoid(mask)  # 生成 mask, torch.Size([batch, 1, H, W])
+            mask = torch.sigmoid(mask)
             hg_features_cat = hg_features_cat * mask + hg_features_cat
             hg_features_cat = torch.cat([x, hg_features_cat], dim=1)
         else:
@@ -249,10 +238,9 @@ class EmoNet(nn.Module):
         final_features = final_features.view(batch_size, -1)
         final_features = self.emo_fc_2(final_features)
         
-        # 在LSTM前应用dropout
         final_features = self.dropout(final_features)
         
-        final_features = final_features.unsqueeze(1)  # 添加时间维度
+        final_features = final_features.unsqueeze(1)
         final_features, _ = self.lstm(final_features)
         final_features = final_features[:, -1, :]
         
@@ -261,9 +249,6 @@ class EmoNet(nn.Module):
         id_features = self.grl(final_features)
         id_logits = self.identity_classifier(id_features)
         regression_output = self.depression_regression(final_features)
-        # mask：热力图，用于解释性可视化
-        # final_features：用于抑郁检测回归任务的情感特征
-        # id_logits：用于身份判别任务的预测
         return mask, final_features, id_logits, regression_output
 
     def eval(self):

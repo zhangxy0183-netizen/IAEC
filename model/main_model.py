@@ -3,13 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import sys
 sys.path.append('/home/b532root/account/b532zxy/workspace')
-from Depression_all.model.visualEncoder import VisualFeatureExtractor   # 视频特征编码器
+from Depression_all.model.visualEncoder import VisualFeatureExtractor
 from Depression_all.model.FrameSim import EmotionAlignmentLoss
 
 class DModel(nn.Module):
     def __init__(self, args):
         super(DModel, self).__init__()
-        # freeze_layers = ['conv1', 'conv2', 'conv3']
         self.video_processModel = VisualFeatureExtractor(
             best_emonet_path=args.best_emonet_path,
             dropout=args.dropout,
@@ -34,10 +33,10 @@ class DModel(nn.Module):
         if mode == 'pretrain':
             return v_features, audio_features
         else:
-            v_pooled = v_features.mean(dim=1)  # (batch_size, feature_dim)
-            audio_pooled = audio_features.mean(dim=1)  # (batch_size, feature_dim)
+            v_pooled = v_features.mean(dim=1)
+            audio_pooled = audio_features.mean(dim=1)
             fusion_features = torch.cat([v_pooled, audio_pooled], dim=-1)
-            output = self.fc(fusion_features)  # 最终输出 (batch_size, output_dim)
+            output = self.fc(fusion_features)
             output = output.view(-1, 1)
             return output, v_features, audio_features, emotionAlignmentLoss        
  

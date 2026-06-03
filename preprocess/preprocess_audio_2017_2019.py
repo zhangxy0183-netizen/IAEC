@@ -5,12 +5,10 @@ import librosa
 import opensmile
 from sklearn.preprocessing import StandardScaler
 
-# ==== 修补 numpy 以兼容 librosa 的 np.complex 调用 ====
 import numpy as _np
 if not hasattr(_np, 'complex'):
     _np.complex = complex
 
-# ==== 配置区域 ====
 INPUT_ROOT = "/home/b532root/data/b532zxy/AVEC2019_jieya"
 PROCESSED_ROOT = "/home/b532root/data/b532zxy/AVEC2019"
 LABEL_PATHS = {
@@ -21,7 +19,6 @@ LABEL_PATHS = {
 NUM_SEGMENTS = 15
 N_MFCC = 40
    
-# eGeMAPS 提取器（函数级别特征）
 SMILE = opensmile.Smile(
     feature_set=opensmile.FeatureSet.eGeMAPSv02,
     feature_level=opensmile.FeatureLevel.Functionals
@@ -34,11 +31,9 @@ def process_audio_segment(audio, sr, start_time, end_time):
     start_sample = int(start_time * sr)
     end_sample = int(end_time * sr)
     segment = audio[start_sample:end_sample]
-    # 最小长度 0.5s
     min_len = int(sr * 0.5)
     if len(segment) < min_len:
         segment = np.pad(segment, (0, min_len - len(segment)), mode='constant')
-    # 全静音则零向量
     if np.max(np.abs(segment)) < 1e-5:
         return np.zeros(N_MFCC + 88, dtype=np.float32)
     # MFCC
@@ -67,7 +62,6 @@ def extract_features(wav_path):
         feats.append(vec)
     return np.stack(feats, axis=0)
 
-# ==== 特征提取阶段 ====
 print("== 特征提取阶段 ==")
 for split, label_csv in LABEL_PATHS.items():
     df = pd.read_csv(label_csv)
@@ -84,9 +78,7 @@ for split, label_csv in LABEL_PATHS.items():
             else:
                 print(f"[警告] WAV 文件不存在: {wav_file}")
 
-# ==== 归一化阶段 (仅基于训练集) ====
 print("== 归一化阶段 ==")
-# 聚合训练集所有段特征
 train_df = pd.read_csv(LABEL_PATHS['train'])
 all_feats = []
 for pid in train_df['Participant_ID'].astype(str):
@@ -98,17 +90,14 @@ if not all_feats:
     raise RuntimeError("训练集特征文件为空！")
 all_stack = np.concatenate(all_feats, axis=0)  # (N_segments,128)
 
-# 拆分 MFCC & eGeMAPS，拟合 Scaler
 mfcc_scaler = StandardScaler().fit(all_stack[:, :N_MFCC])
 egemaps_scaler = StandardScaler().fit(all_stack[:, N_MFCC:])
 
-# 防止 scale_==0 导致除零
 mfcc_scaler.scale_[mfcc_scaler.scale_ == 0] = 1.0
 egemaps_scaler.scale_[egemaps_scaler.scale_ == 0] = 1.0
 
 print("Scalers fitted. Applying normalization...")
 
-# 应用归一化并清除 NaN/Inf
 for split, label_csv in LABEL_PATHS.items():
     df = pd.read_csv(label_csv)
     for pid in df['Participant_ID'].astype(str):
@@ -119,7 +108,6 @@ for split, label_csv in LABEL_PATHS.items():
             egemap_norm= egemaps_scaler.transform(arr[:, N_MFCC:])
             arr_norm   = np.concatenate([mfcc_norm, egemap_norm], axis=1).astype(np.float32)
 
-            # 彻底清除 NaN/Inf
             arr_norm = np.nan_to_num(arr_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
             np.save(file_path, arr_norm)

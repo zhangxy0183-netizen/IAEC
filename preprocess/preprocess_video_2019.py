@@ -37,7 +37,6 @@ def process_e_daic(input_root, output_root, frames_per_clip=15):
         out_dir  = os.path.join(output_root, sess)
         os.makedirs(out_dir, exist_ok=True)
 
-        # 只匹配真正的 OpenFace CSV
         candidates = []
         for fname in os.listdir(feat_dir):
             low = fname.lower()
@@ -70,7 +69,6 @@ def process_e_daic(input_root, output_root, frames_per_clip=15):
             print("  → 缺少期望列，跳过")
             continue
 
-        # 第一步：收集每帧各通道标量
         vals1, vals2, vals3 = [], [], []
         hms = []
         for i in idxs:
@@ -81,12 +79,10 @@ def process_e_daic(input_root, output_root, frames_per_clip=15):
             vals1.append(val1)
             vals2.append(val2)
             vals3.append(val3)
-            # heatmap
             hm64 = make_aus_heatmap(row[au_cols].astype(float).values, H=64, W=64)
             hms.append(hm64)
 
         vals1 = np.array(vals1); vals2 = np.array(vals2); vals3 = np.array(vals3)
-        # 通道归一化参数
         def norm_array(v):
             vmin, vmax = v.min(), v.max()
             if vmax - vmin < 1e-6:
@@ -96,7 +92,6 @@ def process_e_daic(input_root, output_root, frames_per_clip=15):
         norm2 = norm_array(vals2)
         norm3 = norm_array(vals3)
 
-        # 第二步：生成伪图像和上采样热力图
         imgs, hms256 = [], []
         for t in range(frames_per_clip):
             ch1 = np.full((256,256), norm1[t], dtype=np.float32)

@@ -12,7 +12,6 @@ test_path = config[dataset]['test_path']
 mode = config['mode']
 stage = config['stage']
 audio_feature_type = config['audio_feature_type']
-# 定义超参数
 parser = argparse.ArgumentParser(description='Test')
 parser.add_argument('--name', type=str, help="测试文件")
 parser.add_argument('--batch_size', default=4, type=int, help='批处理大小')
@@ -41,7 +40,6 @@ parser.add_argument('--audio_feature_type', default=audio_feature_type, type=str
 args = parser.parse_args()
 
 testmode = ['w_all', 'w_o_SE', 'w_o_ID', 'w_o_SIM', 'w_o_Video_Guide']
-# testmode = ['w_all']
 for data in testmode:
     args.test_mode = data
     model_test(args=args)
